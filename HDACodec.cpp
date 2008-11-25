@@ -221,7 +221,7 @@ bool HDACodec::startPlayback(int stream) {
 		return false;
 	}
 	
-	sbdPhysAddr = audioDevice->playbackBufferDescriptor.phaddr;
+	sbdPhysAddr = audioDevice->playbackBufferDescriptor.getPhysicalAddress();
 	audioDevice->regsWrite32(regbase + HDA_SD_BDLPL, sbdPhysAddr.low32());
 	audioDevice->regsWrite32(regbase + HDA_SD_BDLPU, sbdPhysAddr.hi32());
 	audioDevice->regsWrite16(regbase + HDA_SD_LVI, HDA_BDLE_NUMS - 1);
@@ -238,7 +238,7 @@ bool HDACodec::startPlayback(int stream) {
 
 	/* enable the position buffer */
 	if (!audioDevice->regsRead32(HDA_DPLBASE) & DPLBASE_ENABLE) {
-		audioDevice->regsWrite32(HDA_DPLBASE, audioDevice->positionBuffer.phaddr.low32() | DPLBASE_ENABLE);
+		audioDevice->regsWrite32(HDA_DPLBASE, audioDevice->positionBuffer.getPhysicalAddress().low32() | DPLBASE_ENABLE);
 	}
 	
 	/* enable SIE */
@@ -317,9 +317,9 @@ bool HDACodec::fillPlaybackBuffer() {
 	int rs;
 	int i;
 	
-	entry = (BDLEntry*)audioDevice->playbackBufferDescriptor.buf;
-	buf = (char*)audioDevice->playbackBuffer.buf;
-	bufPhysAddr = audioDevice->playbackBuffer.phaddr.whole64();
+	entry = (BDLEntry*)audioDevice->playbackBufferDescriptor.getVirtualAddress();
+	buf = (char*)audioDevice->playbackBuffer.getVirtualAddress();
+	bufPhysAddr = audioDevice->playbackBuffer.getPhysicalAddress().whole64();
 	
 	/* assume that 2-channel, 16-bit */
 	samples = audioDevice->playbackBufferSize * HDA_BDLE_NUMS / 2;
@@ -666,7 +666,7 @@ bool HDACodec::initHardware(IOService *provider)
 
     // Allocate our input and output buffers - a real driver will likely need to allocate its buffers
     // differently
-    outputBuffer = (SInt16 *)(audioDevice->playbackBuffer.buf);
+    outputBuffer = (SInt16 *)(audioDevice->playbackBuffer.getVirtualAddress());
     if (!outputBuffer) {
         goto Done;
     }

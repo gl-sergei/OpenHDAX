@@ -26,85 +26,15 @@
 
 OSDefineMetaClassAndStructors(HDAController, IOAudioDevice)
 
-bool DMABuffer::allocate(unsigned int size, bool allow64bit) {
-	bufferMemoryDescriptor = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
-				// task to hold the memory
-				kernel_task, 
-				// options
-				kIOMemoryPhysicallyContiguous, 
-				// size
-				size, 
-				allow64bit ?
-				// physicalMask - 64 bit addressable and page aligned
-				0xFFFFFFFFFFFFF000ULL :
-				// physicalMask - 32 bit addressable and page aligned
-				0x00000000FFFFF000ULL);
-	if (!bufferMemoryDescriptor) {
-		return false;
-	}
-	
-	buf = bufferMemoryDescriptor->getBytesNoCopy();
-
-	dmaCommand = NULL;
-
-	if (allow64bit) {
-		dmaCommand = IODMACommand::withSpecification(
-			// outSegFunc - Host endian since we read the address data with the cpu
-			// and 64 bit wide quantities
-			kIODMACommandOutputHost64, 
-			// numAddressBits
-			64, 
-			// maxSegmentSize - zero for unrestricted physically contiguous chunks
-			0,
-			// mappingOptions - kMapped for DMA addresses
-			IODMACommand::kMapped,
-			// maxTransferSize - no restriction
-			0,
-			// alignment
-			4096);
-		dmaCommand->setMemoryDescriptor(bufferMemoryDescriptor);
-		UInt64 offset = 0;
-		// use the 64 bit variant to match outSegFunc
-		IODMACommand::Segment64 segment;
-		UInt32 numSeg = 1;
-		// use the 64 bit variant to match outSegFunc
-		dmaCommand->gen64IOVMSegments(&offset, &segment, &numSeg);
-		IOLog("addr 0x%qx, len 0x%qx, nsegs %ld\n",
-				segment.fIOVMAddr, segment.fLength, numSeg);
-		phaddr.set(segment.fIOVMAddr);
-	} else {
-		phaddr.set(bufferMemoryDescriptor->getPhysicalAddress());
-	}
-
-	bufferMemoryDescriptor->prepare(kIODirectionOutIn);
-	
-	return true;
-}
-
-void DMABuffer::free() {
-	if (dmaCommand) {
-		dmaCommand->clearMemoryDescriptor();
-		dmaCommand->release();
-		dmaCommand = NULL;
-	}
-
-	if (bufferMemoryDescriptor) {
-		bufferMemoryDescriptor->complete();
-		bufferMemoryDescriptor->release();
-		bufferMemoryDescriptor = NULL;
-	}
-}
-
 /*
  * CORB and RIRB interface
  */
 bool HDAController::allocateRingBuffers() {
 	if (!commandBuffer.allocate(4096, true))
 		return false;
-	corb.phaddr = commandBuffer.phaddr;
-	corb.buf = (UInt32*)commandBuffer.buf;
-	rirb.phaddr = corb.phaddr;
-	rirb.phaddr.offset(2048);
+	corb.phaddr = commandBuffer.getPhysicalAddress();
+	corb.buf = (UInt32*)commandBuffer.getVirtualAddress();
+	rirb.phaddr = corb.phaddr.offset(2048);
 	rirb.buf = corb.buf + 512;
 
 	IOLog("HDAController[%p]::allocateRingBuffers() corb: phaddr=%08qx, buf=%p\n", this, corb.phaddr.whole64(), corb.buf);
@@ -671,8 +601,8 @@ bool HDAController::initController()
 		return false;
 
 	/* program the position buffer */
-	regsWrite32(HDA_DPLBASE, positionBuffer.phaddr.low32());
-	regsWrite32(HDA_DPUBASE, positionBuffer.phaddr.hi32());
+	regsWrite32(HDA_DPLBASE, positionBuffer.getPhysicalAddress().low32());
+	regsWrite32(HDA_DPUBASE, positionBuffer.getPhysicalAddress().hi32());
 
 	return true;
 }
