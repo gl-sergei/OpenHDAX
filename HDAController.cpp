@@ -30,10 +30,11 @@ OSDefineMetaClassAndStructors(HDAController, IOAudioDevice)
  * CORB and RIRB interface
  */
 bool HDAController::allocateRingBuffers() {
-	if (!commandBuffer.allocate(4096, true))
+	commandBuffer = HDADMABuffer::withSize(4069, true);
+	if (!commandBuffer)
 		return false;
-	corb.phaddr = commandBuffer.getPhysicalAddress();
-	corb.buf = (UInt32*)commandBuffer.getVirtualAddress();
+	corb.phaddr = commandBuffer->getPhysicalAddress();
+	corb.buf = (UInt32*)commandBuffer->getVirtualAddress();
 	rirb.phaddr = corb.phaddr.offset(2048);
 	rirb.buf = corb.buf + 512;
 
@@ -44,14 +45,15 @@ bool HDAController::allocateRingBuffers() {
 }
 
 void HDAController::freeRingBuffers() {
-	commandBuffer.free();
+	commandBuffer->release();
 }
 
 bool HDAController::allocatePlaybackBuffers() {
 	IOLog("allocatePlaybackBuffers: size = %d, dma64ok=%d\n", (int)playbackBufferSize * HDA_BDLE_NUMS, (int)dma64ok);
 
 	/* allocate DMA for data buffer of playback stream */
-	if (!playbackBuffer.allocate(playbackBufferSize * HDA_BDLE_NUMS, dma64ok))
+	playbackBuffer = HDADMABuffer::withSize(playbackBufferSize * HDA_BDLE_NUMS, dma64ok);
+	if (!playbackBuffer)
 		return false;
 
 //	for (int i = 0; i < playbackBufferSize * HDA_BDLE_NUMS; i++) {
@@ -59,7 +61,8 @@ bool HDAController::allocatePlaybackBuffers() {
 //	}
 
 	/* allocate DMA for buffer descriptor list of playback stream */
-	if (!playbackBufferDescriptor.allocate(sizeof(BDLEntry) * HDA_BDLE_NUMS))
+	playbackBufferDescriptor = HDADMABuffer::withSize(sizeof(BDLEntry) * HDA_BDLE_NUMS);
+	if (!playbackBufferDescriptor)
 		return false;
 
 	return true;
@@ -67,34 +70,42 @@ bool HDAController::allocatePlaybackBuffers() {
 
 bool HDAController::allocateRecordBuffers() {
 	/* allocate DMA for data buffer of record stream */
-	if (!recordBuffer.allocate(recordBufferSize * HDA_BDLE_NUMS, dma64ok))
+	recordBuffer = HDADMABuffer::withSize(recordBufferSize * HDA_BDLE_NUMS, dma64ok);
+	if (!recordBuffer)
 		return false;
 
 	/* allocate DMA for buffer descriptor list of record stream */
-	if (!recordBufferDescriptor.allocate(sizeof(BDLEntry) * HDA_BDLE_NUMS))
+	recordBufferDescriptor = HDADMABuffer::withSize(sizeof(BDLEntry) * HDA_BDLE_NUMS);
+	if (!recordBufferDescriptor)
 		return false;
 
 	return true;
 }
 
 void HDAController::freePlaybackBuffers() {
-	playbackBuffer.free();
-	playbackBufferDescriptor.free();
+	if (playbackBuffer)
+		playbackBuffer->release();
+	if (playbackBufferDescriptor)
+		playbackBufferDescriptor->release();
 }
 
 void HDAController::freeRecordBuffers() {
-	recordBuffer.free();
-	recordBufferDescriptor.free();
+	if (recordBuffer)
+		recordBuffer->release();
+	if (recordBufferDescriptor)
+		recordBufferDescriptor->release();
 }
 
 bool HDAController::allocatePositionBuffer() {
-	if (!positionBuffer.allocate(numStreams * 8, dma64ok))
+	positionBuffer = HDADMABuffer::withSize(numStreams * 8, dma64ok);
+	if (!positionBuffer)
 		return false;
 	return true;
 }
 
 void HDAController::freePositionBuffer() {
-	positionBuffer.free();
+	if (positionBuffer)
+		positionBuffer->release();
 }
 
 // инициализация CORB и RIRB
@@ -346,11 +357,15 @@ bool HDAController::initHardware(IOService *provider)
     // add the hardware init code here
 	initPCIConfigSpace(pciDevice);
     
-    setDeviceName("Sample PCI Audio Device");
-    setDeviceShortName("PCIAudio");
-    setManufacturerName("My Company");
+    setDeviceName("Intel HDA controller (ESB2 chipset)");
+    setDeviceShortName("IntelHDA");
+    setManufacturerName("Intel");
 
 //#error Put your own hardware initialization code here...and in other routines!!
+
+	// найти более подходящее место. И вообще контроллер не должен сам выделять буфера для кодеков. А лишь предоставлять
+	// необходимый интерфейс для этого. Или вообще не должен.
+	commandBuffer = playbackBufferDescriptor = playbackBuffer = recordBufferDescriptor = recordBuffer = positionBuffer = NULL;
 
 	if (!initHDA()) {
 		goto Done;
@@ -601,8 +616,8 @@ bool HDAController::initController()
 		return false;
 
 	/* program the position buffer */
-	regsWrite32(HDA_DPLBASE, positionBuffer.getPhysicalAddress().low32());
-	regsWrite32(HDA_DPUBASE, positionBuffer.getPhysicalAddress().hi32());
+	regsWrite32(HDA_DPLBASE, positionBuffer->getPhysicalAddress().low32());
+	regsWrite32(HDA_DPUBASE, positionBuffer->getPhysicalAddress().hi32());
 
 	return true;
 }

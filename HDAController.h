@@ -271,7 +271,7 @@ public:
 	unsigned int codecMask;
 
     Registers						deviceRegisters;			// PCI registers map
-	DMABuffer						commandBuffer;				// CORB and RIRB buffer (allocated once for both)
+	HDADMABuffer					*commandBuffer;				// CORB and RIRB buffer (allocated once for both)
 	CommandRingBuffer				corb;						// CORB
 	CommandRingBuffer				rirb;						// RIRB
     IOFilterInterruptEventSource	*interruptEventSource;
@@ -292,11 +292,11 @@ public:
 	int unsolicited;
 
 	/* playback */
-	DMABuffer						playbackBufferDescriptor;
-	DMABuffer						playbackBuffer;
-	DMABuffer						recordBufferDescriptor;
-	DMABuffer						recordBuffer;
-	DMABuffer						positionBuffer;
+	HDADMABuffer					*playbackBufferDescriptor;
+	HDADMABuffer					*playbackBuffer;
+	HDADMABuffer					*recordBufferDescriptor;
+	HDADMABuffer					*recordBuffer;
+	HDADMABuffer					*positionBuffer;
 	
 	int								inputStreams;
 	int								outputStreams;

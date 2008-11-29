@@ -48,17 +48,36 @@ PH64 PH64::offset(UInt64 offset) const {
 
 
 /*
- * IOKit DMA Buffer wrapper
+ * DMA Buffer wrapper for private needs.
  */
 
-DMABuffer::DMABuffer() {
+OSDefineMetaClassAndStructors(HDADMABuffer, OSObject)
+
+bool HDADMABuffer::init(unsigned int size, bool allow64bit) {
 	bufferMemoryDescriptor = NULL;
 	dmaCommand = NULL;
 	phaddr = PH64();
 	buf = NULL;
+	
+	return allocate(size, allow64bit);
 }
 
-bool DMABuffer::allocate(unsigned int size, bool allow64bit) {
+HDADMABuffer *HDADMABuffer::withSize(unsigned int size, bool allow64bit) {
+
+	HDADMABuffer *buffer = new HDADMABuffer;
+
+	if (!buffer)
+		return NULL;
+
+	if (!buffer->init(size, allow64bit)) {
+		buffer->release();
+		return NULL;
+	}
+
+	return buffer;
+}
+
+bool HDADMABuffer::allocate(unsigned int size, bool allow64bit) {
 	bufferMemoryDescriptor = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
 				// task to hold the memory
 				kernel_task, 
@@ -111,7 +130,7 @@ bool DMABuffer::allocate(unsigned int size, bool allow64bit) {
 	return true;
 }
 
-void DMABuffer::free() {
+void HDADMABuffer::free() {
 	if (dmaCommand) {
 		dmaCommand->clearMemoryDescriptor();
 		dmaCommand->release();
@@ -123,12 +142,14 @@ void DMABuffer::free() {
 		bufferMemoryDescriptor->release();
 		bufferMemoryDescriptor = NULL;
 	}
+
+	OSObject::free();
 }
 
-void* DMABuffer::getVirtualAddress() const {
+void* HDADMABuffer::getVirtualAddress() const {
 	return buf;
 }
 
-PH64 DMABuffer::getPhysicalAddress() const {
+PH64 HDADMABuffer::getPhysicalAddress() const {
 	return phaddr;
 }

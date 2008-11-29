@@ -35,18 +35,22 @@ public:
 	virtual PH64 offset(UInt64 offset) const;
 };
 
-class DMABuffer {
+class HDADMABuffer : public OSObject {
+
+	OSDeclareDefaultStructors(HDADMABuffer)
 
 	IOBufferMemoryDescriptor *bufferMemoryDescriptor;	// buffer which we allocating
 	IODMACommand *dmaCommand;							// we need this for 64bit allocating
 	PH64 phaddr;										// physical address
 	void *buf;											// virtual address
 
+	virtual bool allocate(unsigned int size, bool allow64bit);
+
 public:
 
-	DMABuffer();
+	virtual bool init(unsigned int size, bool allow64bit = false);
+	static HDADMABuffer *withSize(unsigned int size, bool allow64bit = false);
 
-	virtual bool allocate(unsigned int size, bool allow64bit = false);
 	virtual void free();
 
 	virtual void *getVirtualAddress() const;
