@@ -162,12 +162,12 @@ bool HDAController::corbSendCommand(UInt32 val) {
 	wp++;
 	wp %= MAX_CORB_ENTRIES;
 	
-	IOInterruptState state = IOSimpleLockLockDisableInterrupt(regsSpinLock);
+	IOInterruptState state = deviceRegs->lock();
 	rirb.cmds++;
 //	IOLog("buf=%p,wp=%u\n", corb.buf, wp);
 	OSWriteLittleInt32(corb.buf, wp * sizeof(UInt32), val);
 	regsWrite32(HDA_CORBWP, wp);
-	IOSimpleLockUnlockEnableInterrupt(regsSpinLock, state);
+	deviceRegs->unlock(state);
 	
 	return true;
 }
@@ -212,9 +212,9 @@ UInt32 HDAController::rirbGetResponse() {
 	for ( ; ; ) {
 		while (timeout--) {
 			if (pollingMode) {
-				interruptState = IOSimpleLockLockDisableInterrupt(regsSpinLock);
+				interruptState = deviceRegs->lock();
 				updateRirb();
-				IOSimpleLockUnlockEnableInterrupt(regsSpinLock, interruptState);
+				deviceRegs->unlock(interruptState);
 			}
 			if (!rirb.cmds)
 				return rirb.res;	/* the last value */
@@ -319,6 +319,8 @@ UInt32 HDAController::getResponse() {
 bool HDAController::initHardware(IOService *provider)
 {
     bool result = false;
+	pciDevice = NULL;
+	deviceRegs = NULL;
     
     IOLog("HDAController[%p]::initHardware(%p)\n", this, provider);
     
@@ -332,30 +334,13 @@ bool HDAController::initHardware(IOService *provider)
         goto Done;
     }
     
-    // Config a map for the PCI config base registers
-    // We need to keep this map around until we're done accessing the registers
-    deviceMap = pciDevice->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress0, kIOMapInhibitCache);
-    if (!deviceMap) {
+	deviceRegs = HDAPCIRegisters::withPCIDevice(pciDevice);
+    if (!deviceRegs) {
         goto Done;
     }
-
-    IOLog("map: Phys:%08x Virt:%08x len:%u\n",
-		(unsigned) deviceMap->getPhysicalAddress(),
-		(unsigned) deviceMap->getVirtualAddress(),
-		(unsigned) deviceMap->getLength());
-
-    // Get the virtual address for the registers - mapped in the kernel address space
-    deviceRegisters = (Registers)deviceMap->getVirtualAddress();
-    if (!deviceRegisters) {
-        goto Done;
-    }
-    
-    // Enable the PCI memory access - the kernel will panic if this isn't done before accessing the 
-    // mapped registers
-    pciDevice->setMemoryEnable(true);
 
     // add the hardware init code here
-	initPCIConfigSpace(pciDevice);
+	deviceRegs->initPCIConfigSpace();
     
     setDeviceName("Intel HDA controller (ESB2 chipset)");
     setDeviceShortName("IntelHDA");
@@ -382,34 +367,13 @@ bool HDAController::initHardware(IOService *provider)
 Done:
 
     if (!result) {
-        if (deviceMap) {
-            deviceMap->release();
-            deviceMap = NULL;
+        if (deviceRegs) {
+            deviceRegs->release();
+            deviceRegs = NULL;
         }
     }
 
     return result;
-}
-
-bool HDAController::allocateRegsSpinLock() {
-
-	regsSpinLock = IOSimpleLockAlloc();
-	if (!regsSpinLock)
-		return false;
-		
-	IOSimpleLockInit(regsSpinLock);
-
-	return true;
-}
-
-bool HDAController::freeRegsSpinLock() {
-
-	if (regsSpinLock) {
-		IOSimpleLockFree(regsSpinLock);
-		regsSpinLock = NULL;
-	}
-
-	return true;
 }
 
 bool HDAController::allocateMutex() {
@@ -446,25 +410,6 @@ void HDAController::commandLock() {
 
 void HDAController::commandUnlock() {
 	IOLockUnlock(commandMutex);
-}
-
-bool HDAController::initPCIConfigSpace(IOPCIDevice *provider)
-{
-	UInt16	reg16;
-        
-    reg16	= provider->configRead16( kIOPCIConfigCommand );
-    reg16  &= ~kIOPCICommandIOSpace;
-
-    reg16	|= ( kIOPCICommandBusMaster
-			|    kIOPCICommandMemorySpace
-			|	 kIOPCICommandMemWrInvalidate );
-
-	provider->configWrite16( kIOPCIConfigCommand, reg16 );
-
-	provider->configWrite8( kIOPCIConfigCacheLineSize, 64 / sizeof( UInt32 ) );
-	provider->configWrite8( kIOPCIConfigLatencyTimer, 0xF8 );// max timer - low 3 bits ignored
-
-    return true;
 }
 
 // Калька с oss hdaudio.c/reset_contoller
@@ -670,8 +615,6 @@ bool HDAController::initHDA() {
 	IOLog("irq=%d\n", (int)irq_line);
 
 
-	/* allocate spinlocks */
-	allocateRegsSpinLock();
 	/* allocate command locking mutex */
 	allocateCommandMutex();
 	allocateMutex();
@@ -729,7 +672,7 @@ bool HDAController::filterInterrupt(IOInterruptEventSource *source) {
 	
 	++interruptsAquired;
 	
-	IOInterruptState state = IOSimpleLockLockDisableInterrupt(regsSpinLock);
+	IOInterruptState state = deviceRegs->lock();
 
 	status = regsRead8(HDA_INTSTS);
 	for (i = 0; i < numStreams; i++) {
@@ -751,7 +694,7 @@ bool HDAController::filterInterrupt(IOInterruptEventSource *source) {
 		}
 		regsWrite8(HDA_RIRBSTS, RIRB_INT_MASK);
 	}
-	IOSimpleLockUnlockEnableInterrupt(regsSpinLock, state);
+	deviceRegs->unlock(state);
 
 	return needHandler;
 }
@@ -786,9 +729,9 @@ void HDAController::free()
 		IOLog("unsolicited = %d\n", unsolicited);
 	}
 	
-    if (deviceMap) {
-        deviceMap->release();
-        deviceMap = NULL;
+    if (deviceRegs) {
+        deviceRegs->release();
+        deviceRegs = NULL;
     }
 	
 	freeRingBuffers();
@@ -797,7 +740,6 @@ void HDAController::free()
 	
 	freePositionBuffer();
 	
-	freeRegsSpinLock();
 	freeCommandMutex();
 	freeMutex();
     

@@ -30,6 +30,7 @@
 #include <IOKit/IOLocks.h>
 
 #include "dma.h"
+#include "HDAPCIRegisters.h"
 
 #define HDA_REG_AS(regs,reg,type)	(*((type*)(regs + reg)))
 
@@ -265,19 +266,20 @@ class HDAController : public IOAudioDevice
   
 public:  
     IOPCIDevice						*pciDevice;
-    IOMemoryMap						*deviceMap;
+//    IOMemoryMap						*deviceMap;
     HDACodec			*audioEngine;
+	HDAPCIRegisters *deviceRegs;
 	
 	unsigned int codecMask;
 
-    Registers						deviceRegisters;			// PCI registers map
+//    Registers						deviceRegisters;			// PCI registers map
 	HDADMABuffer					*commandBuffer;				// CORB and RIRB buffer (allocated once for both)
 	CommandRingBuffer				corb;						// CORB
 	CommandRingBuffer				rirb;						// RIRB
     IOFilterInterruptEventSource	*interruptEventSource;
 
-	/* regs spinlock */
-	IOSimpleLock					*regsSpinLock;
+//	/* regs spinlock */
+//	IOSimpleLock					*regsSpinLock;
 	/* command lock mutex */
 	IOLock							*commandMutex;
 	/* mutex from audiohd.c */
@@ -343,7 +345,6 @@ public:
 	unsigned int					inputPorts;				/* active inputs */
 
     virtual bool initHardware(IOService *provider);
-	virtual bool initPCIConfigSpace(IOPCIDevice *provider);
     virtual bool createAudioEngine();
 	virtual bool initCommandIO();
 	virtual void enableInterrupts();
@@ -353,8 +354,6 @@ public:
 	virtual bool resetController();
 	virtual bool initController();
 	virtual bool initHDA();
-	virtual bool allocateRegsSpinLock();
-	virtual bool freeRegsSpinLock();
 	virtual bool allocateCommandMutex();
 	virtual bool freeCommandMutex();
 	virtual bool allocateMutex();
@@ -390,28 +389,28 @@ public:
 	
 //private:
     
-	inline void regsWrite32(UInt16 offset, UInt32 value) {
-		OSWriteLittleInt32(deviceRegisters, offset, value);
+	inline void regsWrite32(unsigned int offset, UInt32 value) {
+		deviceRegs->write32(offset, value);
 	}
 
-    inline void regsWrite16(UInt16 offset, UInt16 value) {
-		OSWriteLittleInt16(deviceRegisters, offset, value);
+    inline void regsWrite16(unsigned int offset, UInt16 value) {
+		deviceRegs->write16(offset, value);
 	}
 
-    inline void regsWrite8(UInt16 offset, UInt8 value) {
-		*((UInt8*)deviceRegisters + offset) = value;
+    inline void regsWrite8(unsigned int offset, UInt8 value) {
+		deviceRegs->write8(offset, value);
 	}
 
-    inline UInt32 regsRead32(UInt16 offset) {
-		return OSReadLittleInt32(deviceRegisters, offset);
+    inline UInt32 regsRead32(unsigned int offset) {
+		return deviceRegs->read32(offset);
 	}
 
-    inline UInt16 regsRead16(UInt16 offset) {
-		return OSReadLittleInt16(deviceRegisters, offset);
+    inline UInt16 regsRead16(unsigned int offset) {
+		return deviceRegs->read16(offset);
 	}
 
-    inline UInt8 regsRead8(UInt16 offset) {
-		return *((UInt8*)deviceRegisters + offset);
+    inline UInt8 regsRead8(unsigned int offset) {
+		return deviceRegs->read8(offset);
 	}
 
 	
