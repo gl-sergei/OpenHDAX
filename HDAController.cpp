@@ -19,34 +19,9 @@
 
 #include <IOKit/pci/IOPCIDevice.h>
 
-#define CORB_DELAY			10
-#define CORB_LOOPS			1000
-
 #define super IOAudioDevice
 
 OSDefineMetaClassAndStructors(HDAController, IOAudioDevice)
-
-/*
- * CORB and RIRB interface
- */
-bool HDAController::allocateRingBuffers() {
-	commandBuffer = HDADMABuffer::withSize(4069, true);
-	if (!commandBuffer)
-		return false;
-	corb.phaddr = commandBuffer->getPhysicalAddress();
-	corb.buf = (UInt32*)commandBuffer->getVirtualAddress();
-	rirb.phaddr = corb.phaddr.offset(2048);
-	rirb.buf = corb.buf + 512;
-
-	IOLog("HDAController[%p]::allocateRingBuffers() corb: phaddr=%08qx, buf=%p\n", this, corb.phaddr.whole64(), corb.buf);
-	IOLog("HDAController[%p]::allocateRingBuffers() rirb: phaddr=%08qx, buf=%p\n", this, rirb.phaddr.whole64(), rirb.buf);
-	
-	return true;
-}
-
-void HDAController::freeRingBuffers() {
-	commandBuffer->release();
-}
 
 bool HDAController::allocatePlaybackBuffers() {
 	IOLog("allocatePlaybackBuffers: size = %d, dma64ok=%d\n", (int)playbackBufferSize * HDA_BDLE_NUMS, (int)dma64ok);
@@ -108,212 +83,6 @@ void HDAController::freePositionBuffer() {
 		positionBuffer->release();
 }
 
-// инициализация CORB и RIRB
-bool HDAController::initCommandIO() {
-	IOLog("HDAController[%p]::initCommandIO()\n", this);
-
-	/* Allocate buffers */
-	allocateRingBuffers();
-
-	isSingleCommand = false;
-
-	/* CORB set up */
-	regsWrite32(HDA_CORBLBASE, corb.phaddr.low32());
-	regsWrite32(HDA_CORBUBASE, corb.phaddr.hi32());
-
-	/* set the corb size to 256 entries (ULI requires explicitly) */
-	regsWrite8(HDA_CORBSIZE, 0x02);
-	/* set the corb write pointer to 0 */
-	regsWrite16(HDA_CORBWP, 0);
-	/* reset the corb hw read pointer */
-	regsWrite16(HDA_CORBRP, RBRWP_CLR);
-	/* enable corb dma */
-	regsWrite8(HDA_CORBCTL, RBCTL_DMA_EN);
-
-	/* RIRB set up */
-	regsWrite32(HDA_RIRBLBASE, rirb.phaddr.low32());
-	regsWrite32(HDA_RIRBUBASE, rirb.phaddr.hi32());
-
-	/* set the rirb size to 256 entries (ULI requires explicitly) */
-	regsWrite8(HDA_RIRBSIZE, 0x02);
-	/* reset the rirb hw write pointer */
-	regsWrite16(HDA_RIRBWP, RBRWP_CLR);
-	/* set N=1, get RIRB response interrupt for new entry */
-	regsWrite16(HDA_RINTCNT, 1);
-	/* enable rirb dma and response irq */
-	regsWrite8(HDA_RIRBCTL, RBCTL_DMA_EN | RBCTL_IRQ_EN);
-	rirb.rp = rirb.cmds = 0;
-
-	return true;
-}
-
-void HDAController::disableRingBuffers() {
-	/* disable ringbuffer DMAs */
-	regsWrite8(HDA_RIRBCTL, 0);
-	regsWrite8(HDA_CORBCTL, 0);
-}
-
-/* send a command */
-bool HDAController::corbSendCommand(UInt32 val) {
-	unsigned int wp;
-	
-	/* add command to corb */
-	wp = regsRead8(HDA_CORBWP);
-	wp++;
-	wp %= MAX_CORB_ENTRIES;
-	
-	IOInterruptState state = deviceRegs->lock();
-	rirb.cmds++;
-//	IOLog("buf=%p,wp=%u\n", corb.buf, wp);
-	OSWriteLittleInt32(corb.buf, wp * sizeof(UInt32), val);
-	regsWrite32(HDA_CORBWP, wp);
-	deviceRegs->unlock(state);
-	
-	return true;
-}
-
-/* retreive RIRB entry - called from interrupt handler */
-void HDAController::updateRirb() {
-	unsigned int rp, wp;
-	UInt32 res, res_ex;
-
-	wp = regsRead8(HDA_RIRBWP);
-	if (wp == rirb.wp)
-		return;
-	rirb.wp = wp;
-	
-	while (rirb.rp != wp) {
-		rirb.rp++;
-		rirb.rp %= MAX_RIRB_ENTRIES;
-
-		rp = rirb.rp << 1; /* an RIRB entry is 8-bytes */
-		res_ex = OSReadLittleInt32(rirb.buf, (rp + 1) * sizeof(UInt32));
-		res = OSReadLittleInt32(rirb.buf, rp * sizeof(UInt32));
-		if (res_ex & RIRB_EX_UNSOL_EV) {
-			// TODO: process unsolicited event
-			//snd_hda_queue_unsol_event(chip->bus, res, res_ex);
-			++unsolicited;
-		}
-		else if (rirb.cmds) {
-			rirb.cmds--;
-			rirb.res = res;
-		}
-	}
-}
-
-/* receive a response */
-UInt32 HDAController::rirbGetResponse() {
-	IOInterruptState interruptState;
-	static bool pollingMode = false;
-	int timeout = 100;
-
-//	IOLog("HDAController[%p]::rirbGetResponse()\n", this);
-
-	for ( ; ; ) {
-		while (timeout--) {
-			if (pollingMode) {
-				interruptState = deviceRegs->lock();
-				updateRirb();
-				deviceRegs->unlock(interruptState);
-			}
-			if (!rirb.cmds)
-				return rirb.res;	/* the last value */
-			IOSleep(2);
-		}
-		if (!pollingMode) {
-			IOLog("HDAController[%p]::rirbGetResponse() timeout. switching to polling mode\n", this);
-			pollingMode = true;
-			continue;				// try again
-		}
-		break;
-	}
-
-	IOLog("HDAController[%p]::rirbGetResponse() timeout switching to singleCommand mode\n", this);
-	
-	rirb.rp = regsRead8(HDA_RIRBWP);
-	rirb.cmds = 0;
-	isSingleCommand = true;
-
-	return (UInt32)-1;
-}
-
-/*
- * Use the single immediate command instead of CORB/RIRB for simplicity
- *
- * Note: according to Intel, this is not preferred use.  The command was
- *       intended for the BIOS only, and may get confused with unsolicited
- *       responses.  So, we shouldn't use it for normal operation from the
- *       driver.
- *       I left the codes, however, for debugging/testing purposes.
- */
-
-/* send a command */
-bool HDAController::singleSendCommand(UInt32 val) {
-	int timeout = 50;
-	
-//	IOLog("HDAController[%p]::singleSendCommand(%x)\n", this, (unsigned int)val);
-
-	while (timeout--) {
-		/* check ICB busy bit */
-		if (!(regsRead16(HDA_IRS) & IRS_BUSY)) {
-			/* Clear IRV valid bit */
-			regsWrite16(HDA_IRS, regsRead16(HDA_IRS) | IRS_VALID);
-			regsWrite32(HDA_IC, val);
-			regsWrite16(HDA_IRS, regsRead16(HDA_IRS) | IRS_BUSY);
-			return true;
-		}
-		IODelay(1);
-	}
-	IOLog("HDAController[%p]::singleSendCommand(%x) timeout", this, (unsigned int)val);
-
-	return false;
-}
-
-/* receive a response */
-UInt32 HDAController::singleGetResponse() {
-	int timeout = 50;
-
-//	IOLog("HDAController[%p]::singleGetResponse()\n", this);
-	while (timeout--) {
-		/* check IRV busy bit */
-		if (regsRead8(HDA_IRS) & IRS_VALID)
-			return regsRead32(HDA_IR);
-		IODelay(1);
-	}
-	IOLog("HDAController[%p]::singleGetResponse() failed\n", this);
-
-	return (UInt32)-1;
-}
-
-/*
- * The below are the main callbacks from hda_codec.
- *
- * They are just the skeleton to call sub-callbacks according to the
- * current setting of chip->single_cmd.
- */
-
-/* send a command */
-bool HDAController::sendCommand(unsigned int addr, UInt16 nid, int direct, unsigned int verb, unsigned int para) {
-	UInt32 val;
-
-	val = (UInt32)(addr & 0x0f) << 28;
-	val |= (UInt32)direct << 27;
-	val |= (UInt32)nid << 20;
-	val |= verb << 8;
-	val |= para & 0xffff;
-
-	if (isSingleCommand)
-		return singleSendCommand(val);
-	return corbSendCommand(val);
-}
-
-/* get a response */
-UInt32 HDAController::getResponse() {
-	if (isSingleCommand)
-		return singleGetResponse();
-	return rirbGetResponse();
-}
-
 /* Смотрим Lowlevel Interface */
 
 bool HDAController::initHardware(IOService *provider)
@@ -348,9 +117,14 @@ bool HDAController::initHardware(IOService *provider)
 
 //#error Put your own hardware initialization code here...and in other routines!!
 
+	commandTransmitter = HDACommandTransmitter::withPCIRegs(deviceRegs);
+	if (!commandTransmitter) {
+		goto Done;
+	}
+
 	// найти более подходящее место. И вообще контроллер не должен сам выделять буфера для кодеков. А лишь предоставлять
 	// необходимый интерфейс для этого. Или вообще не должен.
-	commandBuffer = playbackBufferDescriptor = playbackBuffer = recordBufferDescriptor = recordBuffer = positionBuffer = NULL;
+	playbackBufferDescriptor = playbackBuffer = recordBufferDescriptor = recordBuffer = positionBuffer = NULL;
 
 	if (!initHDA()) {
 		goto Done;
@@ -371,6 +145,10 @@ Done:
             deviceRegs->release();
             deviceRegs = NULL;
         }
+		if (commandTransmitter) {
+			commandTransmitter->release();
+			commandTransmitter = NULL;
+		}
     }
 
     return result;
@@ -387,29 +165,6 @@ bool HDAController::freeMutex() {
 		mutex = NULL;
 	}
 	return true;
-}
-
-bool HDAController::allocateCommandMutex() {
-	commandMutex = IOLockAlloc();
-	if (!commandMutex)
-		return false;
-	return true;
-}
-
-bool HDAController::freeCommandMutex() {
-	if (commandMutex) {
-		IOLockFree(commandMutex);
-		commandMutex = NULL;
-	}
-	return true;
-}
-
-void HDAController::commandLock() {
-	IOLockLock(commandMutex);
-}
-
-void HDAController::commandUnlock() {
-	IOLockUnlock(commandMutex);
 }
 
 // Калька с oss hdaudio.c/reset_contoller
@@ -446,6 +201,10 @@ bool HDAController::resetController() {
 	
 	return true;
 }
+
+// TODO: Ниже есть три полезные в некоторых случаях процедуры
+// нужно со временем переписать их в человеческом виде и избавить от
+// некоторых ошибок
 
 void HDAController::enableInterrupts() {
 	interruptEventSource->enable();
@@ -500,9 +259,8 @@ void HDAController::stopAllDMA() {
 	unsigned int base;
 	UInt8 tmp;
 
-	regsWrite8(HDA_CORBCTL, 0);
-	regsWrite8(HDA_RIRBCTL, 0);
-
+	commandTransmitter->stop();
+	
 	base = HDA_SD_BASE;
 	for (i = 0; i < numStreams; i++) {
 		tmp = regsRead8(base + HDA_SD_CTL);
@@ -553,12 +311,11 @@ bool HDAController::initController()
 	allocateRecordBuffers();
 	allocatePlaybackBuffers();
 
-	allocatePositionBuffer();
+	commandTransmitter->initHardware();
+	commandTransmitter->start();
 
-	/* initialize the codec command I/O */
-	/* setup the CORB/RIRB structs */
-	if (!initCommandIO())
-		return false;
+	/* ICH6/ICH7 book tells that position buffer must be set up before controller reset (we will see...)*/
+	allocatePositionBuffer();
 
 	/* program the position buffer */
 	regsWrite32(HDA_DPLBASE, positionBuffer->getPhysicalAddress().low32());
@@ -604,19 +361,17 @@ bool HDAController::initHDA() {
 	functionNumber = pciDevice->getFunctionNumber();
 	IOLog("busNumber=%u, deviceNumber=%u, functionNumber=%u\n", busNumber, deviceNumber, functionNumber);
 	
-	vendor = pciDevice->configRead16(PCI_VENDOR_ID);
-	device = pciDevice->configRead16(PCI_DEVICE_ID);
-	subvendor = pciDevice->configRead16(PCI_SUBSYSTEM_VENDOR_ID);
-	subdevice = pciDevice->configRead16(PCI_SUBSYSTEM_ID);
-	irq_line = pciDevice->configRead8(PCI_INTERRUPT_LINE);
+	vendor = pciDevice->configRead16(kIOPCIConfigVendorID);
+	device = pciDevice->configRead16(kIOPCIConfigVendorID);
+	subvendor = pciDevice->configRead16(kIOPCIConfigSubSystemVendorID);
+	subdevice = pciDevice->configRead16(kIOPCIConfigSubSystemID);
+	irq_line = pciDevice->configRead8(kIOPCIConfigInterruptLine);
 	
 	IOLog("vendor=%x, device=%x\n", vendor, device);
 	IOLog("subvendor=%x, subdevice=%x\n", subvendor, subdevice);
 	IOLog("irq=%d\n", (int)irq_line);
 
 
-	/* allocate command locking mutex */
-	allocateCommandMutex();
 	allocateMutex();
 
 	
@@ -688,8 +443,8 @@ bool HDAController::filterInterrupt(IOInterruptEventSource *source) {
 
 	status = regsRead8(HDA_RIRBSTS);
 	if (status & RIRB_INT_MASK) {
-		if (!isSingleCommand && (status & RIRB_INT_RESPONSE)) {
-			updateRirb();
+		if (/*!isSingleCommand && */(status & RIRB_INT_RESPONSE)) {
+			commandTransmitter->updateRirb();
 			++interruptsHandled;
 		}
 		regsWrite8(HDA_RIRBSTS, RIRB_INT_MASK);
@@ -716,6 +471,10 @@ void HDAController::free()
     
 	stopAllDMA();
 
+	/* stop the position buffer */
+	regsWrite32(HDA_DPLBASE, 0);
+	regsWrite32(HDA_DPUBASE, 0);
+
 	audioEngine->stopPlayback(0);
     audioEngine->release();
 
@@ -733,14 +492,17 @@ void HDAController::free()
         deviceRegs->release();
         deviceRegs = NULL;
     }
-	
-	freeRingBuffers();
+
+	if (commandTransmitter) {
+		commandTransmitter->release();
+		commandTransmitter = NULL;
+	}
+
 	freePlaybackBuffers();
 	freeRecordBuffers();
 	
 	freePositionBuffer();
 	
-	freeCommandMutex();
 	freeMutex();
     
     super::free();
@@ -887,6 +649,10 @@ Done:
     }
 
     return result;
+}
+
+HDACommandTransmitter *HDAController::getCommandTransmitter() {
+	return commandTransmitter;
 }
 
 IOReturn HDAController::volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue)

@@ -50,12 +50,12 @@ UInt32 HDACodec::codecRead(UInt16 nid, int direct, unsigned int verb, unsigned i
 	UInt32 result;
 
 	powerUp();
-	audioDevice->commandLock();
-	if (audioDevice->sendCommand(codecAddress, nid, direct, verb, parm))
-		result = audioDevice->getResponse();
+	commandTransmitter->lock();
+	if (commandTransmitter->sendCommand(codecAddress, nid, direct, verb, parm))
+		result = commandTransmitter->getResponse();
 	else
 		result = (UInt32)-1;
-	audioDevice->commandUnlock();
+	commandTransmitter->unlock();
 	powerDown();
 
 	return result;
@@ -65,9 +65,9 @@ bool HDACodec::codecWrite(UInt16 nid, int direct, unsigned int verb, unsigned in
 	bool result;
 	
 	powerUp();
-	audioDevice->commandLock();
-	result = audioDevice->sendCommand(codecAddress, nid, direct, verb, parm);
-	audioDevice->commandUnlock();
+	commandTransmitter->lock();
+	result = commandTransmitter->sendCommand(codecAddress, nid, direct, verb, parm);
+	commandTransmitter->unlock();
 	powerDown();
 
 	return result;
@@ -88,6 +88,7 @@ bool HDACodec::init(HDAController *device, unsigned int addr)
     }
     
     audioDevice = device;
+	commandTransmitter = audioDevice->getCommandTransmitter();
 	codecAddress = addr;
 	wcaps = NULL;
     
@@ -236,11 +237,6 @@ bool HDACodec::startPlayback(int stream) {
 	/* set playback stream tag */
 	audioDevice->regsWrite8(regbase + HDA_SD_CTL + 2, audioDevice->playbackStreamTag << 4 | 4);
 
-	/* enable the position buffer */
-	if (!audioDevice->regsRead32(HDA_DPLBASE) & DPLBASE_ENABLE) {
-		audioDevice->regsWrite32(HDA_DPLBASE, audioDevice->positionBuffer->getPhysicalAddress().low32() | DPLBASE_ENABLE);
-	}
-	
 	/* enable SIE */
 	audioDevice->regsWrite8(HDA_INTCTL, audioDevice->regsRead8(HDA_INTCTL) | (1 << audioDevice->playbackStreamTag));
 
@@ -819,6 +815,11 @@ IOReturn HDACodec::performAudioEngineStart()
 //    assert(interruptEventSource);
 //    interruptEventSource->enable();
 
+	/* enable the position buffer */
+	if (!(audioDevice->regsRead32(HDA_DPLBASE) & DPLBASE_ENABLE)) {
+		audioDevice->regsWrite32(HDA_DPLBASE, audioDevice->positionBuffer->getPhysicalAddress().low32() | DPLBASE_ENABLE);
+	}
+
 	if (!startPlayback(audioDevice->inputStreams)) {
 		IOLog("start playback failed\n");
 	}
@@ -861,12 +862,18 @@ IOReturn HDACodec::performAudioEngineStop()
     return kIOReturnSuccess;
 }
 
+#define USE_POSITION_BUFFER 1
+
 unsigned int HDACodec::getCurrentSampleFrame(int stream) {
 
 	unsigned int pos, regbase;
 
+#if USE_POSITION_BUFFER
+	pos = OSReadLittleInt32(audioDevice->positionBuffer->getVirtualAddress(), stream * 8);
+#else
 	regbase = audioDevice->playbackRegistryBase;
 	pos = audioDevice->regsRead32(regbase + HDA_SD_LPIB);
+#endif
 	
 	return pos;
 

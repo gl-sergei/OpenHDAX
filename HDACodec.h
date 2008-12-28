@@ -486,6 +486,8 @@ class HDACodec : public IOAudioEngine
 	
 	int nitrs;
 	
+	HDACommandTransmitter			*commandTransmitter;
+	
 public:
 
     virtual bool init(HDAController *device, unsigned int addr);

@@ -93,6 +93,10 @@ void HDAPCIRegisters::unlock(IOInterruptState state) {
 	IOSimpleLockUnlockEnableInterrupt(spinlock, state);
 }
 
+IOPCIDevice *HDAPCIRegisters::getDevice() {
+	return pciDevice;
+}
+
 /*
  * ЧТО ЗДЕЬ ДЕЛАЕТСЯ, И ДОЛЖНО ЛИ ЭТО ДЕЛАТЬСЯ В HDAPCIRegisters?
  */
