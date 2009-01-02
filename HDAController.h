@@ -153,7 +153,7 @@ public:
 	int								cprecision;
 	int								playbackInterruptFrequence;
 	int								recordInterruptFrequence;
-	int								playbackBufferSize;
+	int								playbackBufferSize;		/* size of playback buffer entry */
 	int								recordBufferSize;
 	
 	bool							outputsMuted;
@@ -184,7 +184,6 @@ public:
 	virtual bool initHDA();
 	virtual bool allocateMutex();
 	virtual bool freeMutex();
-	virtual bool filterInterrupt(IOInterruptEventSource *source);
 	virtual void handleInterrupt(IOInterruptEventSource *source, int count);
 	
 	virtual void stopAllDMA();

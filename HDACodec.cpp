@@ -11,8 +11,6 @@
 
 #include <IOKit/IOLib.h>
 
-#include <IOKit/IOFilterInterruptEventSource.h>
-
 //#define INITIAL_SAMPLE_RATE	44100
 //#define NUM_SAMPLE_FRAMES	16384
 //#define NUM_CHANNELS		2
@@ -240,9 +238,6 @@ bool HDACodec::startPlayback(int stream) {
 	/* enable SIE */
 	audioDevice->regsWrite8(HDA_INTCTL, audioDevice->regsRead8(HDA_INTCTL) | (1 << audioDevice->playbackStreamTag));
 
-	/* start counting BDL entries */
-	numberOfPlaybackBDLEPassed = 0;
-
 	/* enable interrupt and start dma */
 	audioDevice->regsWrite8(regbase + HDA_SD_CTL, SD_INT_MASK | SD_CTL_DMA_START);
 	
@@ -345,10 +340,11 @@ bool HDACodec::fillPlaybackBuffer() {
 	for (i = 0; i < HDA_BDLE_NUMS; i++) {
 		entry->addr = bufPhysAddr;
 		entry->len = audioDevice->playbackBufferSize;
-		entry->ioc = 1;
+		entry->ioc = 0;
 		bufPhysAddr += audioDevice->playbackBufferSize;
 		entry++;
 	}
+	(entry - 1)->ioc = 1;			// we need an interrupt to be generated at the end of whole cyclic buffer
 
 	//	(void) ddi_dma_sync(statep->hda_dma_play_bd.ad_dmahdl, 0,
 	//    sizeof (sd_bdle_t) * AUDIOHD_BDLE_NUMS, DDI_DMA_SYNC_FORDEV);
@@ -944,37 +940,3 @@ IOReturn HDACodec::performFormatChange(IOAudioStream *audioStream, const IOAudio
     
     return kIOReturnSuccess;
 }
-
-
-void HDACodec::interruptHandler(OSObject *owner, IOInterruptEventSource *source, int count)
-{
-    // Since our interrupt filter always returns false, this function will never be called
-    // If the filter returned true, this function would be called on the IOWorkLoop
-
-    return;
-}
-
-bool HDACodec::interruptFilter(OSObject *owner, IOFilterInterruptEventSource *source)
-{
-    HDACodec *audioEngine = OSDynamicCast(HDACodec, owner);
-    
-    // We've cast the audio engine from the owner which we passed in when we created the interrupt
-    // event source
-    if (audioEngine) {
-        // Then, filterInterrupt() is called on the specified audio engine
-        audioEngine->filterInterrupt(source->getIntIndex());
-    }
-
-    return false;
-}
-
-void HDACodec::filterInterrupt(int index)
-{
-    // In the case of our simple device, we only get interrupts when the audio engine loops to the
-    // beginning of the buffer.  When that happens, we need to take a timestamp and increment
-    // the loop count.  The function takeTimeStamp() does both of those for us.  Additionally,
-    // if a different timestamp is to be used (other than the current time), it can be passed
-    // in to takeTimeStamp()
-
-}
-

@@ -456,7 +456,6 @@ enum {
 #define	HDA_FMT_PCMIN	0x0011
 
 
-class IOFilterInterruptEventSource;
 class IOInterruptEventSource;
 
 class HDACodec : public IOAudioEngine
@@ -471,8 +470,6 @@ class HDACodec : public IOAudioEngine
     SInt16							*outputBuffer;
     SInt16							*inputBuffer;
     
-    IOFilterInterruptEventSource	*interruptEventSource;
-    
 	IOAudioStream					*outputAudioStream;
 	
 	UInt32							afg, mfg;
@@ -482,7 +479,6 @@ class HDACodec : public IOAudioEngine
 	UInt32							*wcaps;
 	int								numNodes;
 	UInt32							startNid;
-	int								numberOfPlaybackBDLEPassed;
 	
 	int nitrs;
 	
@@ -508,11 +504,6 @@ public:
     virtual IOReturn clipOutputSamples(const void *mixBuf, void *sampleBuf, UInt32 firstSampleFrame, UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream);
     virtual IOReturn convertInputSamples(const void *sampleBuf, void *destBuf, UInt32 firstSampleFrame, UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream);
     
-    static void interruptHandler(OSObject *owner, IOInterruptEventSource *source, int count);
-    static bool interruptFilter(OSObject *owner, IOFilterInterruptEventSource *source);
-    virtual void filterInterrupt(int index);
-	
-
 	virtual void setupStream(UInt32 nid, UInt32 streamTag, int channelId, int format);
 	virtual bool initDACNode(UInt32 nid);
 	virtual bool initMixerNode(UInt32 nid, int indexNum);

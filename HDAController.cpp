@@ -432,14 +432,9 @@ void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
 		
 		regbase = HDA_SD_BASE + HDA_SD_LEN * i;
 		regsWrite8(regbase + HDA_SD_STS, SD_INT_MASK);
-		if (i == inputStreams && (flags & PLAY_STARTED)) {
-			if (flags & PLAY_STARTED) {
-				if (++audioEngine->numberOfPlaybackBDLEPassed == HDA_BDLE_NUMS) {
-					audioEngine->takeTimeStamp();
-					audioEngine->numberOfPlaybackBDLEPassed = 0;
-				}
-			}
-		}
+		if (i == inputStreams && (flags & PLAY_STARTED))
+			if (flags & PLAY_STARTED)
+				audioEngine->takeTimeStamp();
 	}
 
 	status = regsRead8(HDA_RIRBSTS);
