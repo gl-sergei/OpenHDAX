@@ -11,20 +11,77 @@
 
 #include <IOKit/IOLib.h>
 
+/*
+ * HDACommandResponse
+ */
+
+OSDefineMetaClassAndStructors(HDACommandResponse, IOCommand)
+
+bool HDACommandResponse::init(UInt32 val, UInt32 val_ex) {
+
+	if (!IOCommand::init())
+		return false;
+
+	value = val; value_ex = val_ex;
+
+	return true;
+}
+
+void HDACommandResponse::free() {
+
+	IOCommand::free();
+}
+
+HDACommandResponse *HDACommandResponse::withValue(UInt32 val, UInt32 val_ex) {
+
+	HDACommandResponse *commandResponse = new HDACommandResponse;
+
+	if (!commandResponse->init(val, val_ex)) {
+		commandResponse->release();
+		commandResponse = NULL;
+	}
+
+	return commandResponse;
+}
+
+UInt32 HDACommandResponse::getValue() {
+
+	return value;
+}
+
+UInt32 HDACommandResponse::getValueEx() {
+
+	return value_ex;
+}
+
+
+/*
+ * HDACommandTransmitter
+ */
+
+#define super OSObject
+
 OSDefineMetaClassAndStructors(HDACommandTransmitter, OSObject)
 
 bool HDACommandTransmitter::init(HDAPCIRegisters *registers) {
 
+	if (!super::init())
+		return false;
+
 	commandBuffer = NULL; regs = NULL; mutex = NULL;
+//	unsolicitedResponses = NULL;
 	singleMode = false;
 
 	regs = registers;
-	if (!regs)
-		return false;
+	pciDevice = regs->getDevice();
 
 	commandBuffer = HDADMABuffer::withSize(4069, true);
 	if (!commandBuffer)
 		return false;
+
+/*	unsolicitedResponses = IOCommandPool::withWorkLoop(pciDevice->getWorkLoop());
+	if (!unsolicitedResponses)
+		return false;*/
 
 	corb.phaddr = commandBuffer->getPhysicalAddress();
 	corb.vaddr = (UInt32*)commandBuffer->getVirtualAddress();
@@ -48,10 +105,17 @@ void HDACommandTransmitter::free() {
 		commandBuffer = NULL;
 	}
 
+/*	if (unsolicitedResponses) {
+		unsolicitedResponses->release();
+		unsolicitedResponses = NULL;
+	}*/
+
 	if (mutex) {
 		IOLockFree(mutex);
 		mutex = NULL;
 	}
+
+	super::free();
 }
 
 HDACommandTransmitter *HDACommandTransmitter::withPCIRegs(HDAPCIRegisters *registers) {
@@ -149,6 +213,10 @@ void HDACommandTransmitter::updateRirb() {
 		if (res_ex & RIRB_EX_UNSOL_EV) {
 			// TODO: process unsolicited event
 			//snd_hda_queue_unsol_event(chip->bus, res, res_ex);
+			// I hope there are not a lot of them, really
+			//HDACommandResponse *unsolicitedResponse = HDACommandResponse::withValue(res, res_ex);
+			//unsolicitedResponses->returnCommand(unsolicitedResponse);
+			// WHOW!!! That is great news. All needed information contains in res_ex! Including codec address and much more!!!
 			++unsolicited;
 		}
 		else if (rirb.cmds) {

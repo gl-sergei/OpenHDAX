@@ -51,9 +51,15 @@ PH64 PH64::offset(UInt64 offset) const {
  * DMA Buffer wrapper for private needs.
  */
 
+#define super OSObject
+
 OSDefineMetaClassAndStructors(HDADMABuffer, OSObject)
 
 bool HDADMABuffer::init(unsigned int size, bool allow64bit) {
+
+	if (!super::init())
+		return false;
+
 	bufferMemoryDescriptor = NULL;
 	dmaCommand = NULL;
 	phaddr = PH64();
@@ -143,7 +149,7 @@ void HDADMABuffer::free() {
 		bufferMemoryDescriptor = NULL;
 	}
 
-	OSObject::free();
+	super::free();
 }
 
 void* HDADMABuffer::getVirtualAddress() const {

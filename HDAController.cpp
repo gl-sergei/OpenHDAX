@@ -379,14 +379,12 @@ bool HDAController::initHDA() {
 	IOWorkLoop *workLoop;
 	workLoop = getWorkLoop();
 
-	interruptEventSource = IOFilterInterruptEventSource::filterInterruptEventSource(this,
+	interruptEventSource = IOInterruptEventSource::interruptEventSource(this,
 								OSMemberFunctionCast(IOInterruptEventAction,
-												this,
-												&HDAController::handleInterrupt),
-								OSMemberFunctionCast(IOFilterInterruptAction,
-												this,
-												&HDAController::filterInterrupt),
-								pciDevice, 1);
+													this,
+													&HDAController::handleInterrupt),
+								pciDevice,
+								1 /* from Apple mailing list: "Historically 0 is the normal interrupt, and 1 is for MSI" */);
 	if (!interruptEventSource) {
 		IOLog("HDAController[%p]::initHDA() cannot create interruptEventSource\n", this);
 		return false;
@@ -418,12 +416,10 @@ bool HDAController::initHDA() {
 	return true;
 }
 
-/* determine if rirb interrupt occured */
-bool HDAController::filterInterrupt(IOInterruptEventSource *source) {
+void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
 	UInt32 status;
 	int i;
 	unsigned int regbase;
-	bool needHandler = false;
 	
 	++interruptsAquired;
 	
@@ -437,7 +433,12 @@ bool HDAController::filterInterrupt(IOInterruptEventSource *source) {
 		regbase = HDA_SD_BASE + HDA_SD_LEN * i;
 		regsWrite8(regbase + HDA_SD_STS, SD_INT_MASK);
 		if (i == inputStreams && (flags & PLAY_STARTED)) {
-			needHandler = true;
+			if (flags & PLAY_STARTED) {
+				if (++audioEngine->numberOfPlaybackBDLEPassed == HDA_BDLE_NUMS) {
+					audioEngine->takeTimeStamp();
+					audioEngine->numberOfPlaybackBDLEPassed = 0;
+				}
+			}
 		}
 	}
 
@@ -450,19 +451,6 @@ bool HDAController::filterInterrupt(IOInterruptEventSource *source) {
 		regsWrite8(HDA_RIRBSTS, RIRB_INT_MASK);
 	}
 	deviceRegs->unlock(state);
-
-	return needHandler;
-}
-
-void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
-	IOLockLock(mutex);
-	if (flags & PLAY_STARTED) {
-		if (++audioEngine->numberOfPlaybackBDLEPassed == HDA_BDLE_NUMS) {
-			audioEngine->takeTimeStamp();
-			audioEngine->numberOfPlaybackBDLEPassed = 0;
-		}
-	}
-	IOLockUnlock(mutex);
 }
 
 void HDAController::free()

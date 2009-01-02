@@ -112,7 +112,7 @@ public:
 	
 	unsigned int codecMask;
 
-    IOFilterInterruptEventSource	*interruptEventSource;
+	IOInterruptEventSource			*interruptEventSource;
 
 	/* mutex from audiohd.c */
 	IOLock							*mutex;

@@ -11,9 +11,14 @@
 
 #include <IOKit/IOLib.h>
 
+#define super OSObject
+
 OSDefineMetaClassAndStructors(HDAPCIRegisters, OSObject)
 
 bool HDAPCIRegisters::init(IOPCIDevice* device) {
+
+	if (!super::init())
+		return false;
 
 	pciDevice = device;
 	deviceMap = NULL;
@@ -83,6 +88,8 @@ void HDAPCIRegisters::free() {
 		IOSimpleLockFree(spinlock);
 		spinlock = NULL;
 	}
+
+	super::free();
 }
 
 IOInterruptState HDAPCIRegisters::lock() {

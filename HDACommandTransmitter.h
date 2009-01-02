@@ -8,12 +8,22 @@
  */
 
 #include <IOKit/IOTypes.h>
+#include <IOKit/IOCommand.h>
+#include <IOKit/IOCommandPool.h>
 
 #include "HDAPCIRegisters.h"
 #include "dma.h"
 
 #ifndef __HDA_COMMAND_TRANSMITTER__
 #define __HDA_COMMAND_TRANSMITTER__
+
+/*
+ * Thats it! We'll create IOCommandPool, for queuing unsolicited responces. We'll use returnCommand from updateRirb and will
+ * fetch and dispatch them by calling getCommand(true) from separate thread. We'll create thread by calling IOCreateThread.
+ * That is simple!
+ * Нужно подумать над реорганизацией обработчика прерываний прежде чем обрабатывать неожиданные ответы кодеков.
+ */
+
 
 
 /*
@@ -30,43 +40,23 @@
  *    По спецификации кодек должен в любом случае вернуть ответ на команду. В реальности же нужно вводить TTL для команд.
  */
 
-/*
- * General HDA Command class
- */
-class HDACommand {
+class HDACommandResponse : public IOCommand {
+
+	OSDeclareDefaultStructors(HDACommandResponse)
 
 private:
-	UInt32 command32;
+	UInt32 value;
+	UInt32 value_ex;
 
 public:
-	HDACommand(UInt32 command) {
-		command32 = command;
-	}
 
-	virtual UInt32 getCommand32() const {
-		return command32;
-	}
-};
+	virtual bool init(UInt32 val, UInt32 val_ex);
+	static HDACommandResponse *withValue(UInt32 val, UInt32 val_ex);
+	virtual void free();
 
-class HDACommandResponse {
+	virtual UInt32 getValue();
+	virtual UInt32 getValueEx();
 
-private:
-	UInt32 response32;
-
-public:
-	HDACommandResponse(UInt32 response) {
-		response32 = response;
-	}
-
-	UInt32 getResponse32() {
-		return response32;
-	}
-};
-
-class HDASolicitedResponse : public HDACommandResponse {
-};
-
-class HDAUnsolicitedResponse : public HDACommandResponse {
 };
 
 struct RINGBUFFER {
@@ -84,9 +74,11 @@ class HDACommandTransmitter : public OSObject {
 	HDADMABuffer *commandBuffer;			// DMA buffer for CORB and RIRB operations
 	IOLock *mutex;							// mutex
 	HDAPCIRegisters *regs;					// PCI registers interface
+	IOPCIDevice *pciDevice;					// HDA PCI device from HDAPCIRegisters
 	RINGBUFFER rirb, corb;					// our view of corb/rirb
 	int unsolicited;						// unsolicited responce counter
 	bool singleMode;						// indicates BIOS legacy mode
+//	IOCommandPool *unsolicitedResponses;	// command pool to manage unsolicited responses
 
 	/* here we need response queue here */
 	/* and something in workLoop to process unsolicited responses */
