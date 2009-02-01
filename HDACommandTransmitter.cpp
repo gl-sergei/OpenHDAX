@@ -230,10 +230,10 @@ UInt32 HDACommandTransmitter::rirbGetResponse() {
 
 	/* receive a response */
 	IOInterruptState interruptState;
-	static bool pollingMode = false;
-	int timeout = 100;
+	bool pollingMode = false;
 
 	for ( ; ; ) {
+		int timeout = 100;
 		while (timeout--) {
 			if (pollingMode) {
 				interruptState = regs->lock();
@@ -257,7 +257,7 @@ UInt32 HDACommandTransmitter::rirbGetResponse() {
 	rirb.rp = regs->read8(HDA_RIRBWP);
 	rirb.cmds = 0;
 
-	singleMode = true;
+//	singleMode = true;
 
 	return (UInt32)-1;
 }
@@ -288,7 +288,7 @@ bool HDACommandTransmitter::singleSendCommand(UInt32 command) {
 		}
 		IODelay(1);
 	}
-	IOLog("HDACommandTransmitter[%p]::singleSendCommand(%x) timeout", this, (unsigned int)command);
+	IOLog("HDACommandTransmitter[%p]::singleSendCommand(%x) timeout\n", this, (unsigned int)command);
 
 	return false;
 }

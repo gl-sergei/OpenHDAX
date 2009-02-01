@@ -30,6 +30,8 @@
 			<string>org_barnaul_driver_HDAController</string>
 			<key>IOPCIMatch</key>
 			<string>0x269a8086</string>
+			<key>IOProbeScore</key>
+				<integer>400</integer>
 			<key>IOProviderClass</key>
 			<string>IOPCIDevice</string>
 		</dict>

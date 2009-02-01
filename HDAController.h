@@ -195,6 +195,8 @@ public:
 	virtual bool allocatePositionBuffer();
 	virtual void freePositionBuffer();
 	
+	virtual IOReturn newUserClient( task_t owningTask, void*, UInt32 type, IOUserClient **handler);
+	
 //private:
     
 	inline void regsWrite32(unsigned int offset, UInt32 value) {

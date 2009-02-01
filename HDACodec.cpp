@@ -8,6 +8,7 @@
  */
 
 #include "HDACodec.h"
+#include "HDACodecCommon.h"
 
 #include <IOKit/IOLib.h>
 

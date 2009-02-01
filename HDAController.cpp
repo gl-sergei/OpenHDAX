@@ -9,6 +9,7 @@
 
 #include "HDAController.h"
 #include "HDACodec.h"
+#include "HDATestingUserClient.h"
 
 #include <IOKit/audio/IOAudioControl.h>
 #include <IOKit/audio/IOAudioLevelControl.h>
@@ -422,6 +423,8 @@ void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
 	unsigned int regbase;
 	
 	++interruptsAquired;
+	if (count > 1)
+		IOLog("HDAController::handleInterrupt count = %d\n", count);
 	
 	IOInterruptState state = deviceRegs->lock();
 
@@ -432,9 +435,12 @@ void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
 		
 		regbase = HDA_SD_BASE + HDA_SD_LEN * i;
 		regsWrite8(regbase + HDA_SD_STS, SD_INT_MASK);
-		if (i == inputStreams && (flags & PLAY_STARTED))
+		if (i == inputStreams && (flags & PLAY_STARTED)) {
+			IOLockLock(mutex);
 			if (flags & PLAY_STARTED)
 				audioEngine->takeTimeStamp();
+			IOLockUnlock(mutex);
+		}
 	}
 
 	status = regsRead8(HDA_RIRBSTS);
@@ -739,4 +745,55 @@ IOReturn HDAController::inputMuteChanged(IOAudioControl *muteControl, SInt32 old
     // Add input mute change code here
     
     return kIOReturnSuccess;
+}
+
+
+
+IOReturn HDAController::newUserClient( task_t owningTask, void *securityID, UInt32 type, IOUserClient **handler)
+{
+
+	IOReturn ior = kIOReturnSuccess;
+
+	IOLog("HDAController[%p]::newUserClient()\n", this);
+	
+	HDATestingUserClient *client;
+	
+	client = new HDATestingUserClient;
+	if (!client) {
+		IOLog("HDAController[%p]::newUserClient() new failed\n", this);
+		return kIOReturnError;
+	}
+	
+	if ( !client->initWithTask( owningTask, securityID, type ) ) {
+		IOLog("HDAController[%p]::newUserClient() initWithTask failed\n", this);
+		ior = kIOReturnError;
+	}
+
+	if ( ior == kIOReturnSuccess )
+	{		// Attach ourself to the client so that this client instance can call us.
+		if ( client->attach( this ) == false )
+		{
+			IOLog("HDAController[%p]::newUserClient() attach failed\n", this);
+			ior = kIOReturnError;
+		}
+	}
+
+	if ( ior == kIOReturnSuccess )
+	{		// Start the client so it can accept requests.
+		if ( client->start( this ) == false )
+		{
+			IOLog("HDAController[%p]::newUserClient() start failed\n", this);
+			ior = kIOReturnError;
+		}
+	}
+
+	if ( client && (ior != kIOReturnSuccess) )
+	{
+		client->detach( this );
+		client->release();
+		client = 0;
+	}
+
+	*handler = client;
+	return ior;
 }
