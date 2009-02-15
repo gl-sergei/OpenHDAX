@@ -88,26 +88,32 @@ void HDAController::freePositionBuffer() {
 
 bool HDAController::initHardware(IOService *provider)
 {
-    bool result = false;
-	pciDevice = NULL;
+	// all objects initialy unitialized
+    pciDevice = NULL;
+    audioEngine = NULL;
 	deviceRegs = NULL;
+	commandTransmitter = NULL;
+	interruptEventSource = NULL;
+	mutex = NULL;
+	playbackBufferDescriptor = NULL;
+	playbackBuffer = NULL;
+	recordBufferDescriptor = NULL;
+	recordBuffer = NULL;
+	positionBuffer = NULL;
     
     IOLog("HDAController[%p]::initHardware(%p)\n", this, provider);
     
-    if (!super::initHardware(provider)) {
-        goto Done;
-    }
+    if (!super::initHardware(provider))
+		return false;
     
     // Get the PCI device provider
     pciDevice = OSDynamicCast(IOPCIDevice, provider);
-    if (!pciDevice) {
-        goto Done;
-    }
+    if (!pciDevice)
+		return false;
     
 	deviceRegs = HDAPCIRegisters::withPCIDevice(pciDevice);
-    if (!deviceRegs) {
-        goto Done;
-    }
+    if (!deviceRegs)
+		return false;
 
     // add the hardware init code here
 	deviceRegs->initPCIConfigSpace();
@@ -119,40 +125,22 @@ bool HDAController::initHardware(IOService *provider)
 //#error Put your own hardware initialization code here...and in other routines!!
 
 	commandTransmitter = HDACommandTransmitter::withPCIRegs(deviceRegs);
-	if (!commandTransmitter) {
-		goto Done;
-	}
+	if (!commandTransmitter)
+		return false;
 
 	// найти более подходящее место. И вообще контроллер не должен сам выделять буфера для кодеков. А лишь предоставлять
 	// необходимый интерфейс для этого. Или вообще не должен.
 	playbackBufferDescriptor = playbackBuffer = recordBufferDescriptor = recordBuffer = positionBuffer = NULL;
 
-	if (!initHDA()) {
-		goto Done;
-	}
+	if (!initHDA())
+		return false;
 	
-    if (!createAudioEngine()) {
-        goto Done;
-    }
+    if (!createAudioEngine())
+		return false;
 
 	audioEngine->setFormat(0, AUDIO_PLAY, HDA_SAMPR48000, AUDIO_CHANNELS_STEREO, AUDIO_PRECISION_16, AUDIO_ENCODING_LINEAR);
 
-    result = true;
-    
-Done:
-
-    if (!result) {
-        if (deviceRegs) {
-            deviceRegs->release();
-            deviceRegs = NULL;
-        }
-		if (commandTransmitter) {
-			commandTransmitter->release();
-			commandTransmitter = NULL;
-		}
-    }
-
-    return result;
+    return true;
 }
 
 bool HDAController::allocateMutex() {
@@ -309,14 +297,17 @@ bool HDAController::initController()
 	enableInterrupts();
 
 	/* allocate DMA playback and record buffers */
-	allocateRecordBuffers();
-	allocatePlaybackBuffers();
+	if (!allocateRecordBuffers())
+		return false;
+	if (!allocatePlaybackBuffers())
+		return false;
 
 	commandTransmitter->initHardware();
 	commandTransmitter->start();
 
 	/* ICH6/ICH7 book tells that position buffer must be set up before controller reset (we will see...)*/
-	allocatePositionBuffer();
+	if (!allocatePositionBuffer())
+		return false;
 
 	/* program the position buffer */
 	regsWrite32(HDA_DPLBASE, positionBuffer->getPhysicalAddress().low32());
@@ -373,7 +364,8 @@ bool HDAController::initHDA() {
 	IOLog("irq=%d\n", (int)irq_line);
 
 
-	allocateMutex();
+	if (!allocateMutex())
+		return false;
 
 	
 	/* setup interrupt handlers */
@@ -458,16 +450,24 @@ void HDAController::free()
 {
     IOLog("HDAController[%p]::free()\n", this);
     
-	stopAllDMA();
+	if (commandTransmitter) {
+		IOLog("HDAController::free stopping all DMA\n");
+		stopAllDMA();
+	}
 
 	/* stop the position buffer */
+	IOLog("HDAController::free stopping position buffer\n");
 	regsWrite32(HDA_DPLBASE, 0);
 	regsWrite32(HDA_DPUBASE, 0);
 
-	audioEngine->stopPlayback(0);
-    audioEngine->release();
+	if (audioEngine) {
+		IOLog("HDAController::free stopping audio engine\n");
+		audioEngine->stopPlayback(0);
+		audioEngine->release();
+	}
 
 	if (interruptEventSource) {
+		IOLog("HDAController::free distabling interrupt event source\n");
 		interruptEventSource->disable();
 		getWorkLoop()->removeEventSource(interruptEventSource);
 		interruptEventSource->release();
@@ -476,13 +476,9 @@ void HDAController::free()
 		IOLog("interruptsAquired = %d\n", interruptsAquired);
 		IOLog("unsolicited = %d\n", unsolicited);
 	}
-	
-    if (deviceRegs) {
-        deviceRegs->release();
-        deviceRegs = NULL;
-    }
 
 	if (commandTransmitter) {
+		IOLog("HDAController::free releasing command transmitter\n");
 		commandTransmitter->release();
 		commandTransmitter = NULL;
 	}
@@ -494,6 +490,13 @@ void HDAController::free()
 	
 	freeMutex();
     
+	
+    if (deviceRegs) {
+		IOLog("HDAController::free releasing device registers\n");
+        deviceRegs->release();
+        deviceRegs = NULL;
+    }
+
     super::free();
 }
     
