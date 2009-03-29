@@ -331,6 +331,15 @@ bool HDAController::initHDA() {
 	outputStreams = (gcap >> 12) & 0xf;
 	numStreams = inputStreams + outputStreams;
 	
+	/* TODO:
+	 * streamTag - логический номер потока, передающегося через линк
+	 *    (0 - зарезервирован и не может использоваться. Максимальный - 15)
+	 * registryBase - базовый адрес группы регистров управления потоком
+	 *    всего таких регистров по идее inputStreams + outputStreams + bidirectionalStreams
+	 * bufferDescriptor - описание потока
+	 * buffer - буфер потока, непрерывен в памяти и состоит BDLE_NUMS частей
+	 * НУЖНО СДЕЛАТЬ ИНТЕРФЕЙС ДЛЯ КОДЕКА, ПОЗВОЛЯЮЩИЙ ВЫДЕЛЯТЬ ВСЕ ЭТО В СВЯЗКЕ ПО ЗАПРОСУ КОДЕКА
+	 */
 	/* due to limitations of our driver, lets do things pretty simple */
 	recordStreamTag = 1;
 	playbackStreamTag = inputStreams + 1;

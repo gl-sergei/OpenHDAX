@@ -209,7 +209,7 @@ bool HDACodec::startPlayback(int stream) {
 		return true;
 	}
 	
-	if (!resetStream(audioDevice->inputStreams)) {
+	if (!resetStream(audioDevice->playbackStreamTag)) {
 		IOLog("failed to reset play stream\n");
 		IOLockUnlock(audioDevice->mutex);
 		return false;
