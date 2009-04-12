@@ -224,6 +224,8 @@ public:
 	}
 
 	virtual HDACommandTransmitter *getCommandTransmitter();
+
+	virtual unsigned int getStreamBaseRegByTag(int stream);
 	
     static IOReturn volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);
     virtual IOReturn volumeChanged(IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);

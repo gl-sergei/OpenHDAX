@@ -434,7 +434,7 @@ void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
 		if ((status  & (1<<i)) == 0)
 			continue;
 		
-		regbase = HDA_SD_BASE + HDA_SD_LEN * i;
+		regbase = getStreamBaseRegByTag(i + 1);
 		regsWrite8(regbase + HDA_SD_STS, SD_INT_MASK);
 		if (i == inputStreams && (flags & PLAY_STARTED)) {
 			IOLockLock(mutex);
@@ -654,6 +654,13 @@ Done:
 
 HDACommandTransmitter *HDAController::getCommandTransmitter() {
 	return commandTransmitter;
+}
+
+/*
+ * ВАЖНОЕ ЗАМЕЧАНИЕ! Тэги начинаются с нуля (0)
+ */
+unsigned int HDAController::getStreamBaseRegByTag(int stream) {
+	return HDA_SD_BASE + HDA_SD_LEN * (stream - 1);
 }
 
 IOReturn HDAController::volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue)
