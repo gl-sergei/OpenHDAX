@@ -13,7 +13,17 @@
 
 OSDefineMetaClassAndStructors(HDAAudioStream, IOAudioStream)
 
+/*
+ * Нужно
+ * 1. Выделить ресурсы контроллера (память, tag)
+ * 2. Опросить и настроить nid
+ * 3. Подготовить stream к работе
+ */
 bool HDAAudioStream::init(HDAController *controller, HDACodec *codec, unsigned nid) {
+
+	this->codec = codec;
+	this->controller = controller;
+	this->nid = nid;
 
 	return true;
 

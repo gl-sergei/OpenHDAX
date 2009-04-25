@@ -188,10 +188,12 @@ bool HDACodec::setPCMFormat(int dir, int format) {
 	}
 }
 
-bool HDACodec::startPlayback(int stream) {
+bool HDACodec::startPlayback(int streamTag) {
 	UInt8 ctmp;
 	unsigned int regbase;
 	PH64 sbdPhysAddr;
+
+	IOLog("HDACodec::startPlayback current sample frame is %d\n", getCurrentSampleFrame(streamTag));
 	
 	IOLockLock(audioDevice->mutex);
 	if (audioDevice->flags & PLAY_STARTED) {
@@ -199,21 +201,21 @@ bool HDACodec::startPlayback(int stream) {
 		return true;
 	}
 	
-	regbase = audioDevice->getStreamBaseRegByTag(stream);
+	regbase = audioDevice->getStreamBaseRegByTag(streamTag);
 	if (audioDevice->flags & PLAY_PAUSED) {
 		ctmp = audioDevice->regsRead8(regbase + HDA_SD_CTL);
 		audioDevice->flags |= PLAY_STARTED;
 		audioDevice->flags &= ~PLAY_PAUSED;
 	//	audioDevice->regsWrite8(regbase + HDA_SD_CTL, ctmp | SD_CTL_DMA_START);
 		/* enable SIE */
-		audioDevice->regsWrite8(HDA_INTCTL, audioDevice->regsRead8(HDA_INTCTL) | (1 << stream));
+		audioDevice->regsWrite8(HDA_INTCTL, audioDevice->regsRead8(HDA_INTCTL) | (1 << streamTag));
 		/* enable interrupt and start dma */
 		audioDevice->regsWrite8(regbase + HDA_SD_CTL, SD_INT_MASK | SD_CTL_DMA_START);
 		IOLockUnlock(audioDevice->mutex);
 		return true;
 	}
 	
-	if (!resetStream(stream)) {
+	if (!resetStream(streamTag)) {
 		IOLog("failed to reset play stream\n");
 		IOLockUnlock(audioDevice->mutex);
 		return false;
@@ -238,10 +240,10 @@ bool HDACodec::startPlayback(int stream) {
 	audioDevice->regsWrite8(regbase + HDA_SD_STS, SD_INT_DESC_ERR | SD_INT_FIFO_ERR | SD_INT_COMPLETE);
 	
 	/* set playback stream tag */
-	audioDevice->regsWrite8(regbase + HDA_SD_CTL + 2, stream << 4 | 4);
+	audioDevice->regsWrite8(regbase + HDA_SD_CTL + 2, streamTag << 4 | 4);
 
 	/* enable SIE */
-	audioDevice->regsWrite8(HDA_INTCTL, audioDevice->regsRead8(HDA_INTCTL) | (1 << stream));
+	audioDevice->regsWrite8(HDA_INTCTL, audioDevice->regsRead8(HDA_INTCTL) | (1 << streamTag));
 
 	/* enable interrupt and start dma */
 	audioDevice->regsWrite8(regbase + HDA_SD_CTL, SD_INT_MASK | SD_CTL_DMA_START);
@@ -250,12 +252,12 @@ bool HDACodec::startPlayback(int stream) {
 	return true;
 }
 
-bool HDACodec::resetStream(int stream) {
+bool HDACodec::resetStream(int streamTag) {
 	unsigned int base;
 	UInt8 btmp;
 	int i;
 	
-	base = audioDevice->getStreamBaseRegByTag(stream);
+	base = audioDevice->getStreamBaseRegByTag(streamTag);
 	btmp = audioDevice->regsRead8(base + HDA_SD_CTL);
 	
 	/* stop stream */
@@ -278,7 +280,7 @@ bool HDACodec::resetStream(int stream) {
 	}
 	
 	if (!btmp) {
-		IOLog("Failed to reset stream %d\n", stream);
+		IOLog("Failed to reset stream %d\n", streamTag);
 		return false;
 	}
 	
@@ -298,7 +300,7 @@ bool HDACodec::resetStream(int stream) {
 	}
 	
 	if (btmp) {
-		IOLog("Failed to exit reset state for stream %d, btmp=0x%02x\n", stream, (int)btmp);
+		IOLog("Failed to exit reset state for stream %d, btmp=0x%02x\n", streamTag, (int)btmp);
 		return false;
 	}
 	
@@ -359,14 +361,19 @@ bool HDACodec::fillPlaybackBuffer() {
 	else
 		audioDevice->playbackBufferPosition = (rs << 1);
 
+	zeroCurrentSampleFrame(audioDevice->playbackStreamTag);
+
 	return true;
 }
 
-bool HDACodec::stopPlayback(int stream) {
+bool HDACodec::stopPlayback(int streamTag) {
+
 	unsigned int regbase;
 
+	IOLog("HDACodec::stopPlayback current sample frame is %d\n", getCurrentSampleFrame(streamTag));
+	
 	IOLockLock(audioDevice->mutex);
-	regbase = audioDevice->getStreamBaseRegByTag(stream);
+	regbase = audioDevice->getStreamBaseRegByTag(streamTag);
 	
 	/* stop DMA */
 	audioDevice->regsWrite8(regbase + HDA_SD_CTL,
@@ -375,11 +382,12 @@ bool HDACodec::stopPlayback(int stream) {
 
 	/* disable SIE */
 	audioDevice->regsWrite8(regbase + HDA_INTCTL,
-				audioDevice->regsRead8(regbase + HDA_INTCTL) & ~(1 << stream));
+				audioDevice->regsRead8(regbase + HDA_INTCTL) & ~(1 << streamTag));
 	
 //	audioDevice->regsWrite8(regbase + HDA_SD_CTL, 0);
-//	audioDevice->flags &= ~(PLAY_EMPTY | PLAY_STARTED);
-	audioDevice->flags &= ~(PLAY_EMPTY | PLAY_PAUSED);
+	audioDevice->flags &= ~(PLAY_EMPTY | PLAY_STARTED);
+//	audioDevice->flags &= ~(PLAY_EMPTY | PLAY_PAUSED);
+	
 	IOLockUnlock(audioDevice->mutex);
 	
 	return true;
@@ -522,7 +530,7 @@ bool HDACodec::disablePinOutNode(UInt32 nid) {
  *	currently, only 48k sample rate, 16-bit precision,
  *	2-channel format is supported.
  */
-bool HDACodec::setFormat(int stream, int dir, int sample_rate, int channels, int precision, int encoding) {
+bool HDACodec::setFormat(int streamTag, int dir, int sample_rate, int channels, int precision, int encoding) {
 	/*
 	 * Currently, force to 48k, 16bits, 2-channel
 	 */
@@ -876,14 +884,16 @@ IOReturn HDACodec::performAudioEngineStop()
 
 #define USE_POSITION_BUFFER 1
 
-unsigned int HDACodec::getCurrentSampleFrame(int stream) {
-
-	unsigned int pos, regbase;
+unsigned int HDACodec::getCurrentSampleFrame(int streamTag) {
 
 #if USE_POSITION_BUFFER
-	pos = OSReadLittleInt32(audioDevice->positionBuffer->getVirtualAddress(), stream * 8);
+	unsigned int pos;
+
+	pos = OSReadLittleInt32(audioDevice->positionBuffer->getVirtualAddress(), (streamTag - 1) * 8);
 #else
-	regbase = audioDevice->playbackRegistryBase;
+	unsigned int pos, regbase;
+
+	regbase = audioDevice->getStreamBaseRegByTag(streamTag);
 	pos = audioDevice->regsRead32(regbase + HDA_SD_LPIB);
 #endif
 	
@@ -894,6 +904,14 @@ unsigned int HDACodec::getCurrentSampleFrame(int stream) {
 	pos = OSReadLittleInt32(audioDevice->positionBuffer.buf, stream * 4);
 	
 	return pos;*/
+}
+
+void HDACodec::zeroCurrentSampleFrame(int streamTag) {
+
+#if USE_POSITION_BUFFER
+	OSWriteLittleInt32(audioDevice->positionBuffer->getVirtualAddress(), (streamTag - 1) * 8, 0);
+#endif
+
 }
     
 UInt32 HDACodec::getCurrentSampleFrame()
@@ -913,7 +931,7 @@ UInt32 HDACodec::getCurrentSampleFrame()
 //	static int counter = 0;
 //	++counter;
 
-	pos = getCurrentSampleFrame(audioDevice->inputStreams);
+	pos = getCurrentSampleFrame(audioDevice->playbackStreamTag);
 //	if (counter == 200) {
 //		IOLog("HDACodec[%p]::getCurrentSampleFrame()\n", this);
 //		IOLog("sample frame = %u\n", pos);

@@ -97,16 +97,16 @@ public:
 	virtual bool disablePinOutNode(UInt32 nid);
 	virtual bool setPCMFormat(int dir, int format);
 
-	virtual bool startPlayback(int stream);
-	virtual bool resetStream(int stream);
+	virtual bool startPlayback(int streamTag);
+	virtual bool resetStream(int streamTag);
 	virtual bool fillPlaybackBuffer();
-	virtual bool stopPlayback(int stream);
-	virtual bool setFormat(int stream, int dir, int sample_rate, int channels, int precision, int encoding);
+	virtual bool stopPlayback(int streamTag);
+	virtual bool setFormat(int streamTag, int dir, int sample_rate, int channels, int precision, int encoding);
 	virtual void getMaxGain(unsigned int &pgain, unsigned int &rgain);
 	virtual bool setGain(int dir, int gain, int channel);
 	virtual bool muteOutputs(bool mute);
-	virtual unsigned int getCurrentSampleFrame(int stream);
-
+	virtual unsigned int getCurrentSampleFrame(int streamTag);
+	virtual void zeroCurrentSampleFrame(int streamTag);
 	
 	/* lowlevel interface */
 	virtual void powerUp();
