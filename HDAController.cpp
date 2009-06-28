@@ -266,15 +266,15 @@ void HDAController::stopAllDMA() {
 }
 
 void HDAController::softInit() {
-	const int pints = 32;					/* in solaris >=32 but <= 1500 */
-	const int rints = 32;					/* in solaris >=32 but <= 1500 */
+//	const int pints = 32;					/* in solaris >=32 but <= 1500 */
+//	const int rints = 32;					/* in solaris >=32 but <= 1500 */
 	
 	flags = 0;
-	playbackInterruptFrequence = pints;
-	recordInterruptFrequence = rints;
-	playbackBufferSize = (HDA_SAMPLER_MAX * HDA_MAX_CHANNELS * HDA_MAX_PRECISION / 8) / pints;
+//	playbackInterruptFrequence = pints;
+//	recordInterruptFrequence = rints;
+	playbackBufferSize = 1024 * 16;//(HDA_SAMPLER_MAX * HDA_MAX_CHANNELS * HDA_MAX_PRECISION / 8) / pints;
 	playbackBufferSize = (playbackBufferSize + HDA_BDLE_BUF_ALIGN - 1) & ~(HDA_BDLE_BUF_ALIGN - 1);
-	recordBufferSize = (HDA_SAMPLER_MAX * HDA_MAX_CHANNELS * HDA_MAX_PRECISION / 8) / rints;
+	recordBufferSize = 1024 * 16;//(HDA_SAMPLER_MAX * HDA_MAX_CHANNELS * HDA_MAX_PRECISION / 8) / rints;
 	recordBufferSize = (recordBufferSize + HDA_BDLE_BUF_ALIGN - 1) & ~(HDA_BDLE_BUF_ALIGN - 1);
 
 	outputsMuted = false;
@@ -469,11 +469,11 @@ void HDAController::free()
 	regsWrite32(HDA_DPLBASE, 0);
 	regsWrite32(HDA_DPUBASE, 0);
 
-	if (audioEngine) {
-		IOLog("HDAController::free stopping audio engine\n");
-		audioEngine->stopPlayback(0);
-		audioEngine->release();
-	}
+//	if (audioEngine) {
+//		IOLog("HDAController::free stopping audio engine\n");
+//		audioEngine->stopPlayback(0);
+//		audioEngine->release();
+//	}
 
 	if (interruptEventSource) {
 		IOLog("HDAController::free distabling interrupt event source\n");

@@ -87,6 +87,7 @@ bool HDACodec::init(HDAController *device, unsigned int addr)
     }
     
     audioDevice = device;
+	audioDevice->retain();
 	commandTransmitter = audioDevice->getCommandTransmitter();
 	codecAddress = addr;
 	wcaps = NULL;
@@ -751,6 +752,11 @@ void HDACodec::free()
 		wcaps = NULL;
 	}
     
+	if (audioDevice) {
+		audioDevice->release();
+		audioDevice = NULL;
+	}
+	
     super::free();
 }
 

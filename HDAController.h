@@ -151,8 +151,8 @@ public:
 	int								pprecision;
 	int								cchannels;
 	int								cprecision;
-	int								playbackInterruptFrequence;
-	int								recordInterruptFrequence;
+//	int								playbackInterruptFrequence;
+//	int								recordInterruptFrequence;
 	int								playbackBufferSize;		/* size of playback buffer entry */
 	int								recordBufferSize;
 	
