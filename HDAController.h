@@ -92,23 +92,24 @@ struct BDLEntry {
 
 class IOPCIDevice;
 class IOMemoryMap;
-class org_barnaul_driver_HDACodec;
 class org_barnaul_driver_HDAController;
 
 #define HDAController org_barnaul_driver_HDAController
-#define HDACodec org_barnaul_driver_HDACodec
+
+class HDAIOEngine;
+class HDAAudioWidget;
 
 class HDAController : public IOAudioDevice
 {
 	OSDeclareDefaultStructors(HDAController)
 	
-	friend class HDACodec;
-  
 public:  
     IOPCIDevice						*pciDevice;
-    HDACodec						*audioEngine;
 	HDAPCIRegisters					*deviceRegs;
 	HDACommandTransmitter			*commandTransmitter;
+	HDAAudioWidget					*widgets;
+
+	HDAIOEngine						*outputEngine;
 	
 	unsigned int codecMask;
 
@@ -185,7 +186,8 @@ public:
 	virtual bool allocateMutex();
 	virtual bool freeMutex();
 	virtual void handleInterrupt(IOInterruptEventSource *source, int count);
-	
+
+	virtual void enablePositionBuffer();
 	virtual void stopAllDMA();
 	virtual void softInit();
 	virtual bool allocatePlaybackBuffers();
@@ -224,6 +226,8 @@ public:
 	}
 
 	virtual HDACommandTransmitter *getCommandTransmitter();
+	virtual HDAPCIRegisters *getPCIRegisters();
+	virtual HDADMABuffer *getPositionBuffer();
 
 	virtual unsigned int getStreamBaseRegByTag(int stream);
 	

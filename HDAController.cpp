@@ -8,7 +8,7 @@
  */
 
 #include "HDAController.h"
-#include "HDACodec.h"
+#include "HDAIOEngine.h"
 #include "HDATestingUserClient.h"
 
 #include <IOKit/audio/IOAudioControl.h>
@@ -73,6 +73,9 @@ void HDAController::freeRecordBuffers() {
 }
 
 bool HDAController::allocatePositionBuffer() {
+
+	IOLog("HDAController::allocatePositionBuffer size = %d\n", numStreams * 8);
+
 	positionBuffer = HDADMABuffer::withSize(numStreams * 8, dma64ok);
 	if (!positionBuffer)
 		return false;
@@ -90,7 +93,7 @@ bool HDAController::initHardware(IOService *provider)
 {
 	// all objects initialy unitialized
     pciDevice = NULL;
-    audioEngine = NULL;
+    outputEngine = NULL;
 	deviceRegs = NULL;
 	commandTransmitter = NULL;
 	interruptEventSource = NULL;
@@ -103,6 +106,8 @@ bool HDAController::initHardware(IOService *provider)
     
     IOLog("HDAController[%p]::initHardware(%p)\n", this, provider);
     
+	widgets = new HDAAudioWidget[256];
+
     if (!super::initHardware(provider))
 		return false;
     
@@ -138,7 +143,7 @@ bool HDAController::initHardware(IOService *provider)
     if (!createAudioEngine())
 		return false;
 
-	audioEngine->setFormat(0, AUDIO_PLAY, HDA_SAMPR48000, AUDIO_CHANNELS_STEREO, AUDIO_PRECISION_16, AUDIO_ENCODING_LINEAR);
+//	audioEngine->setFormat(0, AUDIO_PLAY, HDA_SAMPR48000, AUDIO_CHANNELS_STEREO, AUDIO_PRECISION_16, AUDIO_ENCODING_LINEAR);
 
     return true;
 }
@@ -243,6 +248,16 @@ void HDAController::clearInterrupts() {
 	regsWrite32(HDA_INTSTS, INT_CTRL_EN | INT_ALL_STREAM);
 }
 
+void HDAController::enablePositionBuffer()
+{
+	/* enable position buffer */
+	if (!(regsRead32(HDA_DPLBASE) & DPLBASE_ENABLE))
+	{
+		regsWrite32(HDA_DPUBASE, positionBuffer->getPhysicalAddress().hi32());
+		regsWrite32(HDA_DPLBASE, positionBuffer->getPhysicalAddress().low32() | DPLBASE_ENABLE);
+	}
+}
+
 void HDAController::stopAllDMA() {
 	int i;
 	unsigned int base;
@@ -272,9 +287,9 @@ void HDAController::softInit() {
 	flags = 0;
 //	playbackInterruptFrequence = pints;
 //	recordInterruptFrequence = rints;
-	playbackBufferSize = 1024 * 16;//(HDA_SAMPLER_MAX * HDA_MAX_CHANNELS * HDA_MAX_PRECISION / 8) / pints;
+	playbackBufferSize = 1024 * 8;//(HDA_SAMPLER_MAX * HDA_MAX_CHANNELS * HDA_MAX_PRECISION / 8) / pints;
 	playbackBufferSize = (playbackBufferSize + HDA_BDLE_BUF_ALIGN - 1) & ~(HDA_BDLE_BUF_ALIGN - 1);
-	recordBufferSize = 1024 * 16;//(HDA_SAMPLER_MAX * HDA_MAX_CHANNELS * HDA_MAX_PRECISION / 8) / rints;
+	recordBufferSize = 1024 * 8;//(HDA_SAMPLER_MAX * HDA_MAX_CHANNELS * HDA_MAX_PRECISION / 8) / rints;
 	recordBufferSize = (recordBufferSize + HDA_BDLE_BUF_ALIGN - 1) & ~(HDA_BDLE_BUF_ALIGN - 1);
 
 	outputsMuted = false;
@@ -289,22 +304,11 @@ bool HDAController::initController()
 
 	stopAllDMA();
 
-	/* Reset controller */
-	if (!resetController())
+	if (!allocatePlaybackBuffers())
 		return false;
-
-	/* Intr enable */
-	enableInterrupts();
-
 	/* allocate DMA playback and record buffers */
 	if (!allocateRecordBuffers())
 		return false;
-	if (!allocatePlaybackBuffers())
-		return false;
-
-	commandTransmitter->initHardware();
-	commandTransmitter->start();
-
 	/* ICH6/ICH7 book tells that position buffer must be set up before controller reset (we will see...)*/
 	if (!allocatePositionBuffer())
 		return false;
@@ -312,6 +316,23 @@ bool HDAController::initController()
 	/* program the position buffer */
 	regsWrite32(HDA_DPLBASE, positionBuffer->getPhysicalAddress().low32());
 	regsWrite32(HDA_DPUBASE, positionBuffer->getPhysicalAddress().hi32());
+
+	/* Reset controller */
+	if (!resetController())
+		return false;
+
+	/* Intr enable */
+	enableInterrupts();
+
+	commandTransmitter->initHardware();
+	commandTransmitter->start();
+
+
+	/* program the position buffer */
+	regsWrite32(HDA_DPLBASE, positionBuffer->getPhysicalAddress().low32());
+	regsWrite32(HDA_DPUBASE, positionBuffer->getPhysicalAddress().hi32());
+
+	enablePositionBuffer();
 
 	return true;
 }
@@ -414,14 +435,23 @@ bool HDAController::initHDA() {
 		return false;
 	}
 	
+	int i;
+	for (i = 2; i < 2 + 26; i++)
+	{
+		widgets[i].init(commandTransmitter, 0, i);
+//		widgets[i].print();
+	}
+	
 	// TODO: Там дальше еще есть!
 	return true;
 }
 
 void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
+
+	HDAIOEngine *engine;
 	UInt32 status;
-	int i;
-	unsigned int regbase;
+	unsigned i, j;
+	unsigned regbase;
 	
 	++interruptsAquired;
 	if (count > 1)
@@ -436,11 +466,12 @@ void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
 		
 		regbase = getStreamBaseRegByTag(i + 1);
 		regsWrite8(regbase + HDA_SD_STS, SD_INT_MASK);
-		if (i == inputStreams && (flags & PLAY_STARTED)) {
-			IOLockLock(mutex);
-			if (flags & PLAY_STARTED)
-				audioEngine->takeTimeStamp();
-			IOLockUnlock(mutex);
+		if (audioEngines) {
+			for (j = 0; j < audioEngines->getCount(); j++)
+			{
+				engine = (HDAIOEngine*)audioEngines->getObject(j);
+				engine->handleStreamInterrupt(i + 1);
+			}
 		}
 	}
 
@@ -458,7 +489,13 @@ void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
 void HDAController::free()
 {
     IOLog("HDAController[%p]::free()\n", this);
-    
+
+	/* disable position buffer */
+	regsWrite32(HDA_DPLBASE, 0);
+	regsWrite32(HDA_DPUBASE, 0);
+
+	delete [] widgets;
+	
 	if (commandTransmitter) {
 		IOLog("HDAController::free stopping all DMA\n");
 		stopAllDMA();
@@ -516,10 +553,12 @@ bool HDAController::createAudioEngine()
     
     IOLog("HDAController[%p]::createAudioEngine()\n", this);
     
-    audioEngine = new HDACodec;
-    if (!audioEngine) {
-        goto Done;
-    }
+//    audioEngine = new HDACodec;
+//    if (!audioEngine) {
+//        goto Done;
+//    }
+
+	outputEngine = new HDAIOEngine;
     
     // Init the new audio engine with the device registers so it can access them if necessary
     // The audio engine subclass could be defined to take any number of parameters for its
@@ -527,133 +566,51 @@ bool HDAController::createAudioEngine()
 	// Здесь по идее нужно проанализировать codecmask и создать нужное число кодеков
 	// Но это даже не альфа-версия, и я знаю, что кодек один. Так что пусть это будет в
 	// TODO
-    if (!audioEngine->init(this, 0)) {
-        goto Done;
-    }
-    
-    // Create a left & right output volume control with an int range from 0 to 65535
-    // and a db range from -22.5 to 0.0
-    // Once each control is added to the audio engine, they should be released
-    // so that when the audio engine is done with them, they get freed properly
-    control = IOAudioLevelControl::createVolumeControl(32767/*65535*/,	// Initial value
-                                                        0,		// min value
-                                                        65535,	// max value
-                                                        (-22 << 16) + (32768),	// -22.5 in IOFixed (16.16)
-                                                        0,		// max 0.0 in IOFixed
-                                                        kIOAudioControlChannelIDDefaultLeft,
-                                                        kIOAudioControlChannelNameLeft,
-                                                        0,		// control ID - driver-defined
-                                                        kIOAudioControlUsageOutput);
-    if (!control) {
-        goto Done;
-    }
-    
-    control->setValueChangeHandler((IOAudioControl::IntValueChangeHandler)volumeChangeHandler, this);
-    audioEngine->addDefaultAudioControl(control);
-    control->release();
-    
-    control = IOAudioLevelControl::createVolumeControl(32767/*65535*/,	// Initial value
-                                                        0,		// min value
-                                                        65535,	// max value
-                                                        (-22 << 16) + (32768),	// min -22.5 in IOFixed (16.16)
-                                                        0,		// max 0.0 in IOFixed
-                                                        kIOAudioControlChannelIDDefaultRight,	// Affects right channel
-                                                        kIOAudioControlChannelNameRight,
-                                                        1,		// control ID - driver-defined
-                                                        kIOAudioControlUsageOutput);
-    if (!control) {
-        goto Done;
-    }
-        
-    control->setValueChangeHandler((IOAudioControl::IntValueChangeHandler)volumeChangeHandler, this);
-    audioEngine->addDefaultAudioControl(control);
-    control->release();
+//    if (!audioEngine->init(this, 0)) {
+//        goto Done;
+//    }
+	if (!outputEngine->init(kIOAudioStreamDirectionOutput, this, inputStreams + 1, 0))
+	{
+		IOLog("failed to initialize outputEngine\n");
+		return false;
+	}
 
-    // Create an output mute control
-    control = IOAudioToggleControl::createMuteControl(false,	// initial state - unmuted
-                                                        kIOAudioControlChannelIDAll,	// Affects all channels
-                                                        kIOAudioControlChannelNameAll,
-                                                        0,		// control ID - driver-defined
-                                                        kIOAudioControlUsageOutput);
-                                
-    if (!control) {
-        goto Done;
-    }
-        
-    control->setValueChangeHandler((IOAudioControl::IntValueChangeHandler)outputMuteChangeHandler, this);
-    audioEngine->addDefaultAudioControl(control);
-    control->release();
+	HDAAudioWidget *conv[1];
+	conv[0] = &widgets[0x2];
+	outputEngine->setConvertors(conv, 1);
 
-    // Create a left & right input gain control with an int range from 0 to 65535
-    // and a db range from 0 to 22.5
-    control = IOAudioLevelControl::createVolumeControl(65535,	// Initial value
-                                                        0,		// min value
-                                                        65535,	// max value
-                                                        0,		// min 0.0 in IOFixed
-                                                        (22 << 16) + (32768),	// 22.5 in IOFixed (16.16)
-                                                        kIOAudioControlChannelIDDefaultLeft,
-                                                        kIOAudioControlChannelNameLeft,
-                                                        1,		// control ID - driver-defined
-                                                        kIOAudioControlUsageInput);
-    if (!control) {
-        goto Done;
-    }
-    
-    control->setValueChangeHandler((IOAudioControl::IntValueChangeHandler)gainChangeHandler, this);
-    audioEngine->addDefaultAudioControl(control);
-    control->release();
-    
-    control = IOAudioLevelControl::createVolumeControl(65535,	// Initial value
-                                                        0,		// min value
-                                                        65535,	// max value
-                                                        0,		// min 0.0 in IOFixed
-                                                        (22 << 16) + (32768),	// max 22.5 in IOFixed (16.16)
-                                                        kIOAudioControlChannelIDDefaultRight,	// Affects right channel
-                                                        kIOAudioControlChannelNameRight,
-                                                        0,		// control ID - driver-defined
-                                                        kIOAudioControlUsageInput);
-    if (!control) {
-        goto Done;
-    }
-        
-    control->setValueChangeHandler((IOAudioControl::IntValueChangeHandler)gainChangeHandler, this);
-    audioEngine->addDefaultAudioControl(control);
-    control->release();
+	HDAAudioWidget *mix[2];
+	mix[0] = &widgets[0x8]; mix[1] = &widgets[0x9];
+	outputEngine->setMixers(mix, 2);
 
-    // Create an input mute control
-    control = IOAudioToggleControl::createMuteControl(false,	// initial state - unmuted
-                                                        kIOAudioControlChannelIDAll,	// Affects all channels
-                                                        kIOAudioControlChannelNameAll,
-                                                        0,		// control ID - driver-defined
-                                                        kIOAudioControlUsageInput);
-                                
-    if (!control) {
-        goto Done;
-    }
-        
-    control->setValueChangeHandler((IOAudioControl::IntValueChangeHandler)inputMuteChangeHandler, this);
-    audioEngine->addDefaultAudioControl(control);
-    control->release();
+	HDAAudioWidget *pin[2];
+	pin[0] = &widgets[0x10]; pin[1] = &widgets[0xf];
+	outputEngine->setPins(pin, 2);
 
     // Active the audio engine - this will cause the audio engine to have start() and initHardware() called on it
     // After this function returns, that audio engine should be ready to begin vending audio services to the system
-    activateAudioEngine(audioEngine);
+    activateAudioEngine(outputEngine);
+	outputEngine->release();
     // Once the audio engine has been activated, release it so that when the driver gets terminated,
     // it gets freed
     
     result = true;
     
-Done:
-
-    if (!result && (audioEngine != NULL)) {
-        audioEngine->release();
-    }
-
     return result;
 }
 
 HDACommandTransmitter *HDAController::getCommandTransmitter() {
 	return commandTransmitter;
+}
+
+HDAPCIRegisters *HDAController::getPCIRegisters()
+{
+	return deviceRegs;
+}
+
+HDADMABuffer *HDAController::getPositionBuffer()
+{
+	return positionBuffer;
 }
 
 /*
@@ -680,6 +637,7 @@ IOReturn HDAController::volumeChanged(IOAudioControl *volumeControl, SInt32 oldV
 {
     IOLog("HDAController[%p]::volumeChanged(%p, %ld, %ld)\n", this, volumeControl, oldValue, newValue);
     
+#if 0
     if (volumeControl) {
         IOLog("\t-> Channel %ld\n", volumeControl->getChannelID());
     }
@@ -691,7 +649,7 @@ IOReturn HDAController::volumeChanged(IOAudioControl *volumeControl, SInt32 oldV
 		audioEngine->setGain(AUDIO_PLAY, myvalue, 0);
 	if (volumeControl->getChannelID() == kIOAudioControlChannelIDDefaultRight)
 		audioEngine->setGain(AUDIO_PLAY, myvalue, 1);
-
+#endif
     return kIOReturnSuccess;
 }
     
@@ -713,7 +671,7 @@ IOReturn HDAController::outputMuteChanged(IOAudioControl *muteControl, SInt32 ol
     IOLog("HDAController[%p]::outputMuteChanged(%p, %ld, %ld)\n", this, muteControl, oldValue, newValue);
     
     // Add output mute code here
-	audioEngine->muteOutputs(newValue);
+//	audioEngine->muteOutputs(newValue);
     
     return kIOReturnSuccess;
 }
