@@ -72,9 +72,12 @@
 #define INT_CTRL_EN			0x40000000 /* controller interrupt enable bit */
 #define INT_GLOBAL_EN		0x80000000 /* global interrupt enable bit */
 
-#define	INTCTL_BIT_GIE		0x80000000	//audiohd ones
+/*#define	INTCTL_BIT_GIE		0x80000000	//audiohd ones
 #define	INTCTL_BIT_CIE		0x40000000
-#define	INTCTL_BIT_SIE		0x3FFFFFFF
+#define	INTCTL_BIT_SIE		0x3FFFFFFF*/
+
+#define	INTSTS_BIT_GIS		0x80000000
+#define	INTSTS_BIT_CIS		0x40000000
 
 
 /* STATESTS int mask: SD2,SD1,SD0 */
@@ -132,7 +135,7 @@ class HDAPCIRegisters : public OSObject {
 
 	IOPCIDevice *pciDevice;
 	IOMemoryMap *deviceMap;
-	IOSimpleLock *spinlock;
+	IOLock *mutex;
 	volatile void *registers;
 
 public:
@@ -144,8 +147,8 @@ public:
 
 	virtual bool initPCIConfigSpace();
 
-	virtual IOInterruptState lock();
-	virtual void unlock(IOInterruptState state);
+	virtual void lock();
+	virtual void unlock();
 
 	virtual IOPCIDevice *getDevice();
 

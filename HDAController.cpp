@@ -24,54 +24,6 @@
 
 OSDefineMetaClassAndStructors(HDAController, IOAudioDevice)
 
-bool HDAController::allocatePlaybackBuffers() {
-	IOLog("allocatePlaybackBuffers: size = %d, dma64ok=%d\n", (int)playbackBufferSize * HDA_BDLE_NUMS, (int)dma64ok);
-
-	/* allocate DMA for data buffer of playback stream */
-	playbackBuffer = HDADMABuffer::withSize(playbackBufferSize * HDA_BDLE_NUMS, dma64ok);
-	if (!playbackBuffer)
-		return false;
-
-//	for (int i = 0; i < playbackBufferSize * HDA_BDLE_NUMS; i++) {
-//		((char*)playbackBuffer.buf)[i] = (char)i;
-//	}
-
-	/* allocate DMA for buffer descriptor list of playback stream */
-	playbackBufferDescriptor = HDADMABuffer::withSize(sizeof(BDLEntry) * HDA_BDLE_NUMS);
-	if (!playbackBufferDescriptor)
-		return false;
-
-	return true;
-}
-
-bool HDAController::allocateRecordBuffers() {
-	/* allocate DMA for data buffer of record stream */
-	recordBuffer = HDADMABuffer::withSize(recordBufferSize * HDA_BDLE_NUMS, dma64ok);
-	if (!recordBuffer)
-		return false;
-
-	/* allocate DMA for buffer descriptor list of record stream */
-	recordBufferDescriptor = HDADMABuffer::withSize(sizeof(BDLEntry) * HDA_BDLE_NUMS);
-	if (!recordBufferDescriptor)
-		return false;
-
-	return true;
-}
-
-void HDAController::freePlaybackBuffers() {
-	if (playbackBuffer)
-		playbackBuffer->release();
-	if (playbackBufferDescriptor)
-		playbackBufferDescriptor->release();
-}
-
-void HDAController::freeRecordBuffers() {
-	if (recordBuffer)
-		recordBuffer->release();
-	if (recordBufferDescriptor)
-		recordBufferDescriptor->release();
-}
-
 bool HDAController::allocatePositionBuffer() {
 
 	IOLog("HDAController::allocatePositionBuffer size = %d\n", numStreams * 8);
@@ -87,26 +39,33 @@ void HDAController::freePositionBuffer() {
 		positionBuffer->release();
 }
 
-/* Смотрим Lowlevel Interface */
-
-bool HDAController::initHardware(IOService *provider)
+bool HDAController::init(OSDictionary *dictionary)
 {
+    IOLog("HDAController[%p]::init(%p)\n", this, dictionary);
+
+	if (!super::init(dictionary))
+		return false;
+	
 	// all objects initialy unitialized
     pciDevice = NULL;
-    outputEngine = NULL;
 	deviceRegs = NULL;
 	commandTransmitter = NULL;
 	interruptEventSource = NULL;
 	mutex = NULL;
-	playbackBufferDescriptor = NULL;
-	playbackBuffer = NULL;
-	recordBufferDescriptor = NULL;
-	recordBuffer = NULL;
-	positionBuffer = NULL;
-    
-    IOLog("HDAController[%p]::initHardware(%p)\n", this, provider);
-    
+
+	if (!allocateMutex())
+		return false;
+
 	widgets = new HDAAudioWidget[256];
+
+	return true;
+}
+
+/* Смотрим Lowlevel Interface */
+
+bool HDAController::initHardware(IOService *provider)
+{
+    IOLog("HDAController[%p]::initHardware(%p)\n", this, provider);
 
     if (!super::initHardware(provider))
 		return false;
@@ -135,7 +94,7 @@ bool HDAController::initHardware(IOService *provider)
 
 	// найти более подходящее место. И вообще контроллер не должен сам выделять буфера для кодеков. А лишь предоставлять
 	// необходимый интерфейс для этого. Или вообще не должен.
-	playbackBufferDescriptor = playbackBuffer = recordBufferDescriptor = recordBuffer = positionBuffer = NULL;
+	positionBuffer = NULL;
 
 	if (!initHDA())
 		return false;
@@ -224,7 +183,7 @@ void HDAController::disableInterrupts() {
 	regsWrite32(HDA_INTCTL, regsRead32(HDA_INTCTL) &
 		   ~(INT_CTRL_EN | INT_GLOBAL_EN));
 
-//	interruptEventsource->disable();   //??????????
+	interruptEventSource->disable();
 }
 
 void HDAController::clearInterrupts() {
@@ -258,11 +217,20 @@ void HDAController::enablePositionBuffer()
 	}
 }
 
+void HDAController::disablePositionBuffer()
+{
+	/* enable position buffer */
+	regsWrite32(HDA_DPLBASE, 0);
+	regsWrite32(HDA_DPUBASE, 0);
+}
+
 void HDAController::stopAllDMA() {
 	int i;
 	unsigned int base;
 	UInt8 tmp;
 
+	disablePositionBuffer();
+	
 	commandTransmitter->stop();
 	
 	base = HDA_SD_BASE;
@@ -280,35 +248,14 @@ void HDAController::stopAllDMA() {
 	IODelay(40);
 }
 
-void HDAController::softInit() {
-//	const int pints = 32;					/* in solaris >=32 but <= 1500 */
-//	const int rints = 32;					/* in solaris >=32 but <= 1500 */
-	
-	flags = 0;
-//	playbackInterruptFrequence = pints;
-//	recordInterruptFrequence = rints;
-	playbackBufferSize = 1024 * 8;//(HDA_SAMPLER_MAX * HDA_MAX_CHANNELS * HDA_MAX_PRECISION / 8) / pints;
-	playbackBufferSize = (playbackBufferSize + HDA_BDLE_BUF_ALIGN - 1) & ~(HDA_BDLE_BUF_ALIGN - 1);
-	recordBufferSize = 1024 * 8;//(HDA_SAMPLER_MAX * HDA_MAX_CHANNELS * HDA_MAX_PRECISION / 8) / rints;
-	recordBufferSize = (recordBufferSize + HDA_BDLE_BUF_ALIGN - 1) & ~(HDA_BDLE_BUF_ALIGN - 1);
-
-	outputsMuted = false;
-}
-
 /*
  * reset and start the controller registers
  */
 bool HDAController::initController()
 {
-	softInit();
 
 	stopAllDMA();
 
-	if (!allocatePlaybackBuffers())
-		return false;
-	/* allocate DMA playback and record buffers */
-	if (!allocateRecordBuffers())
-		return false;
 	/* ICH6/ICH7 book tells that position buffer must be set up before controller reset (we will see...)*/
 	if (!allocatePositionBuffer())
 		return false;
@@ -352,21 +299,6 @@ bool HDAController::initHDA() {
 	outputStreams = (gcap >> 12) & 0xf;
 	numStreams = inputStreams + outputStreams;
 	
-	/* TODO:
-	 * streamTag - логический номер потока, передающегося через линк
-	 *    (0 - зарезервирован и не может использоваться. Максимальный - 15)
-	 * registryBase - базовый адрес группы регистров управления потоком
-	 *    всего таких регистров по идее inputStreams + outputStreams + bidirectionalStreams
-	 * bufferDescriptor - описание потока
-	 * buffer - буфер потока, непрерывен в памяти и состоит BDLE_NUMS частей
-	 * НУЖНО СДЕЛАТЬ ИНТЕРФЕЙС ДЛЯ КОДЕКА, ПОЗВОЛЯЮЩИЙ ВЫДЕЛЯТЬ ВСЕ ЭТО В СВЯЗКЕ ПО ЗАПРОСУ КОДЕКА
-	 */
-	/* due to limitations of our driver, lets do things pretty simple */
-	recordStreamTag = 1;
-	playbackStreamTag = inputStreams + 1;
-	recordRegistryBase = HDA_SD_BASE;
-	playbackRegistryBase = HDA_SD_BASE + HDA_SD_LEN * inputStreams;
-	
 	IOLog("gcap=%d\n", gcap);
 	IOLog("number of output streams supported = %d\n", outputStreams);
 	IOLog("number of input streams supported = %d\n", inputStreams);
@@ -393,21 +325,18 @@ bool HDAController::initHDA() {
 	IOLog("subvendor=%x, subdevice=%x\n", subvendor, subdevice);
 	IOLog("irq=%d\n", (int)irq_line);
 
-
-	if (!allocateMutex())
-		return false;
-
-	
 	/* setup interrupt handlers */
 	IOWorkLoop *workLoop;
 	workLoop = getWorkLoop();
 
-	interruptEventSource = IOInterruptEventSource::interruptEventSource(this,
-								OSMemberFunctionCast(IOInterruptEventAction,
-													this,
-													&HDAController::handleInterrupt),
-								pciDevice,
-								1 /* from Apple mailing list: "Historically 0 is the normal interrupt, and 1 is for MSI" */);
+	interruptEventSource = IOFilterInterruptEventSource::filterInterruptEventSource(this, 
+																					OSMemberFunctionCast(IOInterruptEventAction,
+																										this,
+																										 &HDAController::handleInterrupt),
+																					OSMemberFunctionCast(IOFilterInterruptEventSource::Filter,
+																										 this,
+																										 &HDAController::filterInterrupt),
+																					pciDevice, 0);
 	if (!interruptEventSource) {
 		IOLog("HDAController[%p]::initHDA() cannot create interruptEventSource\n", this);
 		return false;
@@ -426,10 +355,6 @@ bool HDAController::initHDA() {
 		return false;
 	}
 
-	/* setup the engine structs */
-//	if (!setupEngines())
-//		return false;
-
 	if (!codecMask) {
 		IOLog("HDAController[%p]::initHDA() - no codecs found after reset\n", this);
 		return false;
@@ -446,7 +371,19 @@ bool HDAController::initHDA() {
 	return true;
 }
 
-void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
+bool HDAController::filterInterrupt(IOFilterInterruptEventSource *source) {
+	UInt32 status;
+	
+	status = regsRead32(HDA_INTSTS);
+	if (status & INTSTS_BIT_GIS) {
+		interruptStatus = status;
+		return true;
+	}
+
+	return false;
+}
+
+void HDAController::handleInterrupt(IOFilterInterruptEventSource *source, int count) {
 
 	HDAIOEngine *engine;
 	UInt32 status;
@@ -457,9 +394,7 @@ void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
 	if (count > 1)
 		IOLog("HDAController::handleInterrupt count = %d\n", count);
 	
-	IOInterruptState state = deviceRegs->lock();
-
-	status = regsRead8(HDA_INTSTS);
+	status = interruptStatus;
 	for (i = 0; i < numStreams; i++) {
 		if ((status  & (1<<i)) == 0)
 			continue;
@@ -483,59 +418,61 @@ void HDAController::handleInterrupt(IOInterruptEventSource *source, int count) {
 		}
 		regsWrite8(HDA_RIRBSTS, RIRB_INT_MASK);
 	}
-	deviceRegs->unlock(state);
+}
+
+void HDAController::stop(IOService *provider)
+{
+
+	IOLog("HDAController[%p]::stop(%p)\n", this, provider);
+
+	if (commandTransmitter)
+	{
+		IOLog("HDAController[%p]::stop(%p) - stopAllDMA\n", this, provider);
+		stopAllDMA();
+	}
+	
+	if (interruptEventSource) {
+		IOLog("HDAController[%p]::stop(%p) - disableInterruptEventSource\n", this, provider);
+		interruptEventSource->disable();
+		getWorkLoop()->removeEventSource(interruptEventSource);
+		IOLog("interruptsHandled = %d\n", interruptsHandled);
+		IOLog("interruptsAquired = %d\n", interruptsAquired);
+		IOLog("unsolicited = %d\n", unsolicited);
+	}
+	
+	IOLog("HDAController[%p]::stop(%p) - super::stop()\n", this, provider);
+	super::stop(provider);
+	
 }
 
 void HDAController::free()
 {
     IOLog("HDAController[%p]::free()\n", this);
 
-	/* disable position buffer */
-	regsWrite32(HDA_DPLBASE, 0);
-	regsWrite32(HDA_DPUBASE, 0);
-
-	delete [] widgets;
+	if (widgets)
+	{
+		IOLog("HDAController::free delete [] widgets\n");
+		delete [] widgets;
+	}
 	
-	if (commandTransmitter) {
-		IOLog("HDAController::free stopping all DMA\n");
-		stopAllDMA();
-	}
-
-	/* stop the position buffer */
-	IOLog("HDAController::free stopping position buffer\n");
-	regsWrite32(HDA_DPLBASE, 0);
-	regsWrite32(HDA_DPUBASE, 0);
-
-//	if (audioEngine) {
-//		IOLog("HDAController::free stopping audio engine\n");
-//		audioEngine->stopPlayback(0);
-//		audioEngine->release();
-//	}
-
-	if (interruptEventSource) {
-		IOLog("HDAController::free distabling interrupt event source\n");
-		interruptEventSource->disable();
-		getWorkLoop()->removeEventSource(interruptEventSource);
-		interruptEventSource->release();
-		interruptEventSource = NULL;
-		IOLog("interruptsHandled = %d\n", interruptsHandled);
-		IOLog("interruptsAquired = %d\n", interruptsAquired);
-		IOLog("unsolicited = %d\n", unsolicited);
-	}
-
 	if (commandTransmitter) {
 		IOLog("HDAController::free releasing command transmitter\n");
 		commandTransmitter->release();
 		commandTransmitter = NULL;
 	}
 
-	freePlaybackBuffers();
-	freeRecordBuffers();
-	
+	if (interruptEventSource)
+	{
+		IOLog("HDAController::free releasing interrupt event source\n");
+		interruptEventSource->release();
+		interruptEventSource = NULL;
+	}
+
+	IOLog("HDAController::free position buffer\n");
 	freePositionBuffer();
 	
+	IOLog("HDAController::free mutex\n");
 	freeMutex();
-    
 	
     if (deviceRegs) {
 		IOLog("HDAController::free releasing device registers\n");
@@ -543,6 +480,7 @@ void HDAController::free()
         deviceRegs = NULL;
     }
 
+	IOLog("HDAController::free super::free\n");
     super::free();
 }
     
@@ -553,11 +491,8 @@ bool HDAController::createAudioEngine()
     
     IOLog("HDAController[%p]::createAudioEngine()\n", this);
     
-//    audioEngine = new HDACodec;
-//    if (!audioEngine) {
-//        goto Done;
-//    }
-
+	HDAIOEngine *outputEngine;
+	
 	outputEngine = new HDAIOEngine;
     
     // Init the new audio engine with the device registers so it can access them if necessary
@@ -566,26 +501,23 @@ bool HDAController::createAudioEngine()
 	// Здесь по идее нужно проанализировать codecmask и создать нужное число кодеков
 	// Но это даже не альфа-версия, и я знаю, что кодек один. Так что пусть это будет в
 	// TODO
-//    if (!audioEngine->init(this, 0)) {
-//        goto Done;
-//    }
 	if (!outputEngine->init(kIOAudioStreamDirectionOutput, this, inputStreams + 1, 0))
 	{
 		IOLog("failed to initialize outputEngine\n");
 		return false;
 	}
 
-	HDAAudioWidget *conv[1];
-	conv[0] = &widgets[0x2];
-	outputEngine->setConvertors(conv, 1);
+	HDAAudioWidget *oconv[1];
+	oconv[0] = &widgets[0x2];
+	outputEngine->setConvertors(oconv, 1);
 
-	HDAAudioWidget *mix[2];
-	mix[0] = &widgets[0x8]; mix[1] = &widgets[0x9];
-	outputEngine->setMixers(mix, 2);
+	HDAAudioWidget *omix[2];
+	omix[0] = &widgets[0x8]; omix[1] = &widgets[0x9];
+	outputEngine->setMixers(omix, 2);
 
-	HDAAudioWidget *pin[2];
-	pin[0] = &widgets[0x10]; pin[1] = &widgets[0xf];
-	outputEngine->setPins(pin, 2);
+	HDAAudioWidget *opin[2];
+	opin[0] = &widgets[0x10]; opin[1] = &widgets[0xf];
+	outputEngine->setPins(opin, 2);
 
     // Active the audio engine - this will cause the audio engine to have start() and initHardware() called on it
     // After this function returns, that audio engine should be ready to begin vending audio services to the system
@@ -593,7 +525,28 @@ bool HDAController::createAudioEngine()
 	outputEngine->release();
     // Once the audio engine has been activated, release it so that when the driver gets terminated,
     // it gets freed
+
+
+	HDAIOEngine *inputEngine;
+	inputEngine = new HDAIOEngine;
+
+	if (!inputEngine->init(kIOAudioStreamDirectionInput, this, 1, 0))
+	{
+		IOLog("failed to initialize inputEngine\n");
+		return false;
+	}
+
+	HDAAudioWidget *iconv[1];
+	iconv[0] = &widgets[0x4];
+	inputEngine->setConvertors(iconv, 1);
+
+	HDAAudioWidget *ipin[1];
+	ipin[0] = &widgets[0x12];
+	inputEngine->setPins(ipin, 1);
     
+	activateAudioEngine(inputEngine);
+	inputEngine->release();
+	
     result = true;
     
     return result;
@@ -613,118 +566,9 @@ HDADMABuffer *HDAController::getPositionBuffer()
 	return positionBuffer;
 }
 
-/*
- * ВАЖНОЕ ЗАМЕЧАНИЕ! Тэги начинаются с нуля (0)
- */
 unsigned int HDAController::getStreamBaseRegByTag(int stream) {
 	return HDA_SD_BASE + HDA_SD_LEN * (stream - 1);
 }
-
-IOReturn HDAController::volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue)
-{
-    IOReturn result = kIOReturnBadArgument;
-    HDAController *audioDevice;
-    
-    audioDevice = (HDAController *)target;
-    if (audioDevice) {
-        result = audioDevice->volumeChanged(volumeControl, oldValue, newValue);
-    }
-    
-    return result;
-}
-
-IOReturn HDAController::volumeChanged(IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue)
-{
-    IOLog("HDAController[%p]::volumeChanged(%p, %ld, %ld)\n", this, volumeControl, oldValue, newValue);
-    
-#if 0
-    if (volumeControl) {
-        IOLog("\t-> Channel %ld\n", volumeControl->getChannelID());
-    }
-    
-	unsigned int myvalue = newValue * playbackGainMax / 65536;
-	
-    // Add hardware volume code change 
-	if (volumeControl->getChannelID() == kIOAudioControlChannelIDDefaultLeft)
-		audioEngine->setGain(AUDIO_PLAY, myvalue, 0);
-	if (volumeControl->getChannelID() == kIOAudioControlChannelIDDefaultRight)
-		audioEngine->setGain(AUDIO_PLAY, myvalue, 1);
-#endif
-    return kIOReturnSuccess;
-}
-    
-IOReturn HDAController::outputMuteChangeHandler(IOService *target, IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue)
-{
-    IOReturn result = kIOReturnBadArgument;
-    HDAController *audioDevice;
-    
-    audioDevice = (HDAController *)target;
-    if (audioDevice) {
-        result = audioDevice->outputMuteChanged(muteControl, oldValue, newValue);
-    }
-    
-    return result;
-}
-
-IOReturn HDAController::outputMuteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue)
-{
-    IOLog("HDAController[%p]::outputMuteChanged(%p, %ld, %ld)\n", this, muteControl, oldValue, newValue);
-    
-    // Add output mute code here
-//	audioEngine->muteOutputs(newValue);
-    
-    return kIOReturnSuccess;
-}
-
-IOReturn HDAController::gainChangeHandler(IOService *target, IOAudioControl *gainControl, SInt32 oldValue, SInt32 newValue)
-{
-    IOReturn result = kIOReturnBadArgument;
-    HDAController *audioDevice;
-    
-    audioDevice = (HDAController *)target;
-    if (audioDevice) {
-        result = audioDevice->gainChanged(gainControl, oldValue, newValue);
-    }
-    
-    return result;
-}
-
-IOReturn HDAController::gainChanged(IOAudioControl *gainControl, SInt32 oldValue, SInt32 newValue)
-{
-    IOLog("HDAController[%p]::gainChanged(%p, %ld, %ld)\n", this, gainControl, oldValue, newValue);
-    
-    if (gainControl) {
-        IOLog("\t-> Channel %ld\n", gainControl->getChannelID());
-    }
-    
-    // Add hardware gain change code here 
-
-    return kIOReturnSuccess;
-}
-    
-IOReturn HDAController::inputMuteChangeHandler(IOService *target, IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue)
-{
-    IOReturn result = kIOReturnBadArgument;
-    HDAController *audioDevice;
-    
-    audioDevice = (HDAController *)target;
-    if (audioDevice) {
-        result = audioDevice->inputMuteChanged(muteControl, oldValue, newValue);
-    }
-    
-    return result;
-}
-
-IOReturn HDAController::inputMuteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue)
-{
-    IOLog("HDAController[%p]::inputMuteChanged(%p, %ld, %ld)\n", this, muteControl, oldValue, newValue);
-    
-    // Add input mute change code here
-    
-    return kIOReturnSuccess;
-}
-
-
 
 IOReturn HDAController::newUserClient( task_t owningTask, void *securityID, UInt32 type, IOUserClient **handler)
 {

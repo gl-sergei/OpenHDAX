@@ -109,11 +109,9 @@ public:
 	HDACommandTransmitter			*commandTransmitter;
 	HDAAudioWidget					*widgets;
 
-	HDAIOEngine						*outputEngine;
-	
 	unsigned int codecMask;
 
-	IOInterruptEventSource			*interruptEventSource;
+	IOFilterInterruptEventSource	*interruptEventSource;
 
 	/* mutex from audiohd.c */
 	IOLock							*mutex;
@@ -123,11 +121,7 @@ public:
 	int interruptsAquired;
 	int unsolicited;
 
-	/* playback */
-	HDADMABuffer					*playbackBufferDescriptor;
-	HDADMABuffer					*playbackBuffer;
-	HDADMABuffer					*recordBufferDescriptor;
-	HDADMABuffer					*recordBuffer;
+	/* position */
 	HDADMABuffer					*positionBuffer;
 	
 	int								inputStreams;
@@ -135,65 +129,29 @@ public:
 	int								streamsNums;
 	int								numStreams;
 	
-	int								playbackBufferPosition;
-	int								recordBufferPosition;
-	
 	bool							dma64ok;
 	
-	// direct copypast from Open Solaris audiohd driver
+	UInt32							interruptStatus;
 	
-	UInt32							flags;
-	
-	int								csamples;
-	int								psamples;
-	int								psampleRate;
-	int								csampleRate;
-	int								pchannels;
-	int								pprecision;
-	int								cchannels;
-	int								cprecision;
-//	int								playbackInterruptFrequence;
-//	int								recordInterruptFrequence;
-	int								playbackBufferSize;		/* size of playback buffer entry */
-	int								recordBufferSize;
-	
-	bool							outputsMuted;
-
-	unsigned int					playbackStreamTag;		/* tag of playback stream */
-	unsigned int					recordStreamTag;		/* tag of record stream */
-	unsigned int					playbackRegistryBase;	/* regbase for play stream */
-	unsigned int					recordRegistryBase;		/* regbase for record stream */
-	unsigned int					playbackLeftGain;		/* left gain for playback */
-	unsigned int					playbackRightGain;		/* right gain for playback */
-	unsigned int					playbackGainMax;		/* max gain for playback */
-	unsigned int					recordLeftGain;			/* left gain for recording */
-	unsigned int					recordRightGain;		/* right gain for recording */
-	unsigned int					recordGainMax;			/* max gain for record */
-	unsigned int					playbackFormat;
-	unsigned int					recordFormat;
-	unsigned int					outputPorts;			/* active outputs */
-	unsigned int					inputPorts;				/* active inputs */
-
+	virtual bool init(OSDictionary *dictionary);
     virtual bool initHardware(IOService *provider);
     virtual bool createAudioEngine();
 	virtual void enableInterrupts();
 	virtual void disableInterrupts();
 	virtual void clearInterrupts();
+	virtual void stop(IOService *provider);
     virtual void free();
 	virtual bool resetController();
 	virtual bool initController();
 	virtual bool initHDA();
 	virtual bool allocateMutex();
 	virtual bool freeMutex();
-	virtual void handleInterrupt(IOInterruptEventSource *source, int count);
+	virtual void handleInterrupt(IOFilterInterruptEventSource *source, int count);
+	virtual bool filterInterrupt(IOFilterInterruptEventSource *source);
 
 	virtual void enablePositionBuffer();
+	virtual void disablePositionBuffer();
 	virtual void stopAllDMA();
-	virtual void softInit();
-	virtual bool allocatePlaybackBuffers();
-	virtual bool allocateRecordBuffers();
-	virtual void freePlaybackBuffers();
-	virtual void freeRecordBuffers();
 	virtual bool allocatePositionBuffer();
 	virtual void freePositionBuffer();
 	
@@ -230,18 +188,6 @@ public:
 	virtual HDADMABuffer *getPositionBuffer();
 
 	virtual unsigned int getStreamBaseRegByTag(int stream);
-	
-    static IOReturn volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);
-    virtual IOReturn volumeChanged(IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);
-    
-    static IOReturn outputMuteChangeHandler(IOService *target, IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
-    virtual IOReturn outputMuteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
-
-    static IOReturn gainChangeHandler(IOService *target, IOAudioControl *gainControl, SInt32 oldValue, SInt32 newValue);
-    virtual IOReturn gainChanged(IOAudioControl *gainControl, SInt32 oldValue, SInt32 newValue);
-    
-    static IOReturn inputMuteChangeHandler(IOService *target, IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
-    virtual IOReturn inputMuteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
 };
 
 #endif /* __HDACONTROLLER_H__ */

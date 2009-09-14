@@ -14,9 +14,9 @@
 bool HDAAudioWidget::codecWrite(int direct, unsigned verb, unsigned parm) {
 	bool result;
 	
-	commandTransmitter->lock();
+//	commandTransmitter->lock();
 	result = commandTransmitter->sendCommand(codecAddress, nid, direct, verb, parm);
-	commandTransmitter->unlock();
+//	commandTransmitter->unlock();
 
 	return result;
 }
@@ -25,12 +25,10 @@ unsigned HDAAudioWidget::codecRead(int direct, unsigned verb, unsigned parm) {
 
 	unsigned result;
 
-	commandTransmitter->lock();
-	if (commandTransmitter->sendCommand(codecAddress, nid, direct, verb, parm))
-		result = commandTransmitter->getResponse();
-	else
+//	commandTransmitter->lock();
+	if (!commandTransmitter->sendCommand(codecAddress, nid, direct, verb, parm, &result))
 		result = (UInt32)-1;
-	commandTransmitter->unlock();
+//	commandTransmitter->unlock();
 
 	return result;
 }
@@ -136,7 +134,8 @@ void HDAAudioWidget::init(HDACommandTransmitter *commandTransmitter, unsigned co
 	this->codecAddress = codecAddress;
 	this->nid = nid;
 
-	commandTransmitter->retain();
+	if (this->commandTransmitter)
+		this->commandTransmitter->retain();
 
 	// This is audio widget. Lets determine its capabilities
 	wcaps.wcaps = getAudioWidgetCapabilities();
@@ -192,10 +191,26 @@ void HDAAudioWidget::init(HDACommandTransmitter *commandTransmitter, unsigned co
 	pathLength = 0;
 }
 
+HDAAudioWidget::HDAAudioWidget() {
+	connected_nids = NULL;
+	commandTransmitter = NULL;
+}
+
 HDAAudioWidget::~HDAAudioWidget() {
+	
+	IOLog("HDAAudioWidget[%p]::~HDAAudioWidget()\n", this);
+	
 	if (connected_nids)
+	{
+		IOLog("HDAAudioWidget[%p]::~HDAAudioWidget() delete [] connected_nids\n", this);
+		IOLog("HDAAudioWidget[%p]::~HDAAudioWidget() number_of_connected_nids = %u\n", this, number_of_connected_nids);
 		delete [] connected_nids;
-	commandTransmitter->release();
+	}
+	if (commandTransmitter)
+	{
+		IOLog("HDAAudioWidget[%p]::~HDAAudioWidget() commandTransmitter->release()\n", this);
+		commandTransmitter->release();
+	}
 }
 
 void HDAAudioWidget::print() {

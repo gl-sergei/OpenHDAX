@@ -10,6 +10,7 @@
 #include <IOKit/IOTypes.h>
 #include <IOKit/IOCommand.h>
 #include <IOKit/IOCommandPool.h>
+#include <IOKit/IOCommandGate.h>
 
 #include "HDAPCIRegisters.h"
 #include "dma.h"
@@ -76,9 +77,9 @@ class HDACommandTransmitter : public OSObject {
 	OSDeclareDefaultStructors(HDACommandTransmitter);
 
 	HDADMABuffer *commandBuffer;			// DMA buffer for CORB and RIRB operations
-	IOLock *mutex;							// mutex
 	HDAPCIRegisters *regs;					// PCI registers interface
-	IOPCIDevice *pciDevice;					// HDA PCI device from HDAPCIRegisters
+	IOWorkLoop *workLoop;					// our own work loop
+	IOCommandGate *commandGate;				// Command Gate for sync
 	RINGBUFFER rirb, corb;					// our view of corb/rirb
 	int unsolicited;						// unsolicited responce counter
 	bool singleMode;						// indicates BIOS legacy mode
@@ -87,6 +88,27 @@ class HDACommandTransmitter : public OSObject {
 	/* here we need response queue here */
 	/* and something in workLoop to process unsolicited responses */
 
+	/* low level CORB/RIRB handling */
+	virtual bool corbSendCommand(UInt32 command);				// actual send command
+	virtual UInt32 rirbGetResponse();							// actual receive response
+	virtual UInt32 getResponse();
+	
+	/* BIOS legacy mode */
+	virtual bool singleSendCommand(UInt32 command);
+	virtual UInt32 singleGetResponse();
+
+	struct HDACommand {
+		unsigned int addr;
+		UInt16 nid;
+		int direct;
+		unsigned int verb;
+		unsigned int para;
+		unsigned result;
+	};
+	
+	virtual bool performSendCommand(HDACommand *command);
+	virtual UInt32 performGetResponse();
+	
 public:
 
 	/* construction and destruction */
@@ -94,25 +116,22 @@ public:
 	static HDACommandTransmitter *withPCIRegs(HDAPCIRegisters *registers);
 	virtual void free();
 
-	void initHardware();										// must call this before start
-	void start();												// start corb/rirb dma (NOT STARTED BY DEFAULT!)
-	void stop();												// stop corb/rirb dma
-
-	/* low level CORB/RIRB handling */
-	virtual bool corbSendCommand(UInt32 command);				// actual send command
-	virtual void updateRirb();									// update RIRB responce when interrupt happend
-	virtual UInt32 rirbGetResponse();							// actual receive response
-
-	/* BIOS legacy mode */
-	bool singleSendCommand(UInt32 command);
-	UInt32 singleGetResponse();
+	virtual void initHardware();										// must call this before start
+	virtual void start();												// start corb/rirb dma (NOT STARTED BY DEFAULT!)
+	virtual void stop();												// stop corb/rirb dma
 
 	/* recommended command send interface */
-	bool sendCommand(unsigned int addr, UInt16 nid, int direct, unsigned int verb, unsigned int para);
-	UInt32 getResponse();
+	virtual bool sendCommand(unsigned int addr, UInt16 nid, int direct, unsigned int verb, unsigned int para);
+	virtual bool sendCommand(unsigned int addr, UInt16 nid, int direct, unsigned int verb, unsigned int para, unsigned *result);
 
-	void lock();
-	void unlock();
+	// should be called by interrupt handler only
+	virtual void updateRirb();											// update RIRB responce when interrupt happend
+	
+	static IOReturn sendCommandAction(OSObject *owner, void *arg0, void *arg1, void *arg2, void *arg3);
+	static IOReturn sendCommandAndGetResponseAction(OSObject *owner, void *arg0, void *arg1, void *arg2, void *arg3);
+	
+//	void lock();
+//	void unlock();
 
 };
 

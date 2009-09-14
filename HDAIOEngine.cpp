@@ -15,7 +15,7 @@
 #include <IOKit/audio/IOAudioToggleControl.h>
 #include <IOKit/audio/IOAudioDefines.h>
 
-static const int numberOfSamples = 1024 * 8;
+static const int numberOfSamples = 8192 * 4;
 static const int sampleBufferSize = numberOfSamples * HDA_MAX_CHANNELS * (HDA_MAX_PRECISION / 8);
 
 #define super IOAudioEngine
@@ -60,15 +60,40 @@ bool HDAIOEngine::init(IOAudioStreamDirection streamDirection, HDAController *co
 
 void HDAIOEngine::free()
 {
-	if (pins) delete [] pins;
-	if (mixers) delete [] mixers;
-	if (selectors) delete [] selectors;
-	if (convertors) delete [] convertors;
+	IOLog("HDAIOEngine[%p]::free()\n", this);
+	
+	if (pins) {
+		IOLog("HDAIOEngine[%p]::free() delete [] pins\n", this);
+		delete [] pins;
+	}
+	if (mixers) {
+		IOLog("HDAIOEngine[%p]::free() delete [] mixers\n", this);
+		delete [] mixers;
+	}
+	if (selectors) {
+		IOLog("HDAIOEngine[%p]::free() delete [] selectors\n", this);
+		delete [] selectors;
+	}
+	if (convertors) {
+		IOLog("HDAIOEngine[%p]::free() delete [] convertors\n", this);
+		delete [] convertors;
+	}
+	IOLog("HDAIOEngine[%p]::free() free sample buffer\n", this);
 	freeSampleBuffer();
-	regs->release();
-	positionBuffer->release();
-	controller->release();
+	if (regs) {
+		IOLog("HDAIOEngine[%p]::free() release regs\n", this);
+		regs->release();
+	}
+	if (positionBuffer) {
+		IOLog("HDAIOEngine[%p]::free() release position buffer\n", this);
+		positionBuffer->release();
+	}
+	if (controller) {
+		IOLog("HDAIOEngine[%p]::free() release controller\n", this);
+		controller->release();
+	}
 
+	IOLog("HDAIOEngine[%p]::free() super free\n", this);
 	super::free();
 }
 
@@ -112,13 +137,17 @@ bool HDAIOEngine::allocateSampleBuffer() {
 
 void HDAIOEngine::freeSampleBuffer() {
 
-	IOLog("HDAIOEngine[%p]::freeSampleBuffer", this);
+	IOLog("HDAIOEngine[%p]::freeSampleBuffer\n", this);
 
-	if (sampleBuffer)
+	if (sampleBuffer) {
+		IOLog("HDAIOEngine[%p]::freeSampleBuffer sampleBuffer->release()\n", this);
 		sampleBuffer->release();
+	}
 
-	if (sampleBufferDescriptor)
+	if (sampleBufferDescriptor) {
+		IOLog("HDAIOEngine[%p]::freeSampleBuffer sampleBufferDescriptor->release()\n", this);
 		sampleBufferDescriptor->release();
+	}
 
 }
 
@@ -165,6 +194,13 @@ bool HDAIOEngine::initHardware(IOService *provider)
 		for (w = convertors; *w != NULL; w++)
 		{
 			result = result && (*w)->setConverterStreamChannel(streamId, channelId);
+			if (/*(*w)->wcaps.in_amp_present && */(streamDirection == kIOAudioStreamDirectionInput))
+			{
+				result = result && (*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_LEFT | AC_AMP_SET_INPUT, 0, AC_GAIN_MAX);
+				result = result && (*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_LEFT | AC_AMP_SET_OUTPUT, 0, AC_AMP_MUTE);
+			}
+			if ((*w)->wcaps.out_amp_present && (streamDirection == kIOAudioStreamDirectionOutput))
+				result = result && (*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_LEFT | AC_AMP_SET_OUTPUT, 0, AC_GAIN_MAX);
 			IOLog(" ...0x%x", (*w)->nid);
 		}
 		IOLog(" done\n");
@@ -175,14 +211,37 @@ bool HDAIOEngine::initHardware(IOService *provider)
 		IOLog("setup mixers");
 		for (w = mixers; *w != NULL; w++)
 		{
-				/* unmute input of mixer */
-				result = result && (*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_LEFT | AC_AMP_SET_INPUT, 0, AC_GAIN_MAX);
+//				if (streamDirection == kIOAudioStreamDirectionInput)
+				{
+					/* unmute input of mixer */
+					result = result && (*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_LEFT | AC_AMP_SET_INPUT, 0, AC_GAIN_MAX / 2);
+				}
 
-				/* output left amp of mixer */
-				result = result && (*w)->setAmplifierGainMute(AC_AMP_SET_LEFT | AC_AMP_SET_OUTPUT, 0, AC_GAIN_MAX / 2);
+//				if (streamDirection == kIOAudioStreamDirectionOutput)
+				{
+					/* output left amp of mixer */
+					/* output right amp of mixer */
+					result = result && (*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_LEFT | AC_AMP_SET_OUTPUT, 0, AC_GAIN_MAX / 2);
+				}
+			IOLog(" ...0x%x", (*w)->nid);
+		}
+		IOLog(" done\n");
+	}
 
-				/* output right amp of mixer */
-				result = result && (*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_OUTPUT, 0, AC_GAIN_MAX / 2);
+
+	if (pins)
+	{
+		IOLog("setup pins again");
+		for (w = pins; *w != NULL; w++)
+		{
+			unsigned ctrl = 0;
+			if (streamDirection == kIOAudioStreamDirectionOutput)
+				ctrl |= AC_PINCTL_OUT_EN;
+			if ((*w)->pincaps.headphone_drive_capable)
+				ctrl |= AC_PINCTL_HP_EN;
+			if (streamDirection == kIOAudioStreamDirectionInput)
+				ctrl |= AC_PINCTL_IN_EN | AC_PINCTL_VREF_80;
+			result = result && (*w)->setPinControl(ctrl);
 			IOLog(" ...0x%x", (*w)->nid);
 		}
 		IOLog(" done\n");
@@ -194,19 +253,17 @@ bool HDAIOEngine::initHardware(IOService *provider)
 		for (w = pins; *w != NULL; w++)
 		{
 			/* unmute pins */
-			result = result && (*w)->setAmplifierGainMute(AC_AMP_SET_LEFT | AC_AMP_SET_RIGHT | AC_AMP_SET_OUTPUT, 0, AC_GAIN_MAX);
-			IOLog(" ...0x%x", (*w)->nid);
-		}
-		IOLog(" done\n");
-	}
-
-	if (pins)
-	{
-		IOLog("setup pins again");
-		for (w = pins; *w != NULL; w++)
-		{
-			/* unmute DAC/ADC */
-			result = result && (*w)->setPinControl((*w)->getPinControl() | AC_PINCTL_OUT_EN | AC_PINCTL_IN_EN | AC_PINCTL_HP_EN);
+			if (/*(*w)->wcaps.in_amp_present && */(streamDirection == kIOAudioStreamDirectionInput))
+			{
+				(*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_LEFT | AC_AMP_SET_INPUT, 0, AC_AMP_MUTE);
+				(*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_LEFT | AC_AMP_SET_OUTPUT, 0, AC_AMP_MUTE);
+			}
+			if ((*w)->wcaps.out_amp_present && (streamDirection == kIOAudioStreamDirectionOutput))
+			{
+				(*w)->setAmplifierGainMute(AC_AMP_SET_LEFT | AC_AMP_SET_OUTPUT, 0, AC_GAIN_MAX);
+				(*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_OUTPUT, 0, AC_GAIN_MAX);
+			}
+//			result = result && (*w)->setAmplifierGainMute(AC_AMP_SET_LEFT | AC_AMP_SET_RIGHT | AC_AMP_SET_OUTPUT | AC_AMP_SET_INPUT, 0, AC_GAIN_MAX);
 			IOLog(" ...0x%x", (*w)->nid);
 		}
 		IOLog(" done\n");
@@ -430,6 +487,21 @@ bool HDAIOEngine::startStream()
 	/* enable interrupt and start dma */
 	regs->write8(regbase + HDA_SD_CTL, SD_INT_MASK | SD_CTL_DMA_START);
 
+	if (streamDirection == kIOAudioStreamDirectionInput && pins)
+	{
+		if (pins)
+		{
+			HDAAudioWidget **w;
+			IOLog("turn on pins input and vref");
+			for (w = pins; *w != NULL; w++)
+			{
+				(*w)->setPinControl(AC_PINCTL_IN_EN | AC_PINCTL_VREF_80);
+				IOLog(" ...0x%x", (*w)->nid);
+			}
+			IOLog(" done\n");
+		}
+	}
+
 	return true;
 }
 
@@ -445,6 +517,21 @@ bool HDAIOEngine::stopStream()
 	/* disable SIE */
 	regs->write8(regbase + HDA_INTCTL,
 				regs->read8(regbase + HDA_INTCTL) & ~(1 << streamId));
+
+	if (streamDirection == kIOAudioStreamDirectionInput && pins)
+	{
+		if (pins)
+		{
+			HDAAudioWidget **w;
+			IOLog("turn off pins input and vref");
+			for (w = pins; *w != NULL; w++)
+			{
+				(*w)->setPinControl(0);
+				IOLog(" ...0x%x", (*w)->nid);
+			}
+			IOLog(" done\n");
+		}
+	}
 	
 	return true;
 }
@@ -458,6 +545,7 @@ IOAudioStream *HDAIOEngine::createNewAudioStream(IOAudioStreamDirection directio
     if (audioStream) {
         if (!audioStream->initWithAudioEngine(this, direction, 1)) {
             audioStream->release();
+			audioStream = NULL;
         } else {
             IOAudioSampleRate rate;
             IOAudioStreamFormat format = {
@@ -676,6 +764,25 @@ IOReturn HDAIOEngine::volumeChanged(IOAudioControl *volumeControl, SInt32 oldVal
 
         IOLog("\t-> Channel %ld\n", volumeControl->getChannelID());
 
+		if (convertors)
+		{
+			IOLog("change volume on convertors");
+			for (w = convertors; *w != NULL; w++)
+			{
+				inout = 0;
+				if ((*w)->wcaps.in_amp_present && (streamDirection == kIOAudioStreamDirectionInput))
+					inout |= AC_AMP_SET_INPUT;
+				if ((*w)->wcaps.out_amp_present && (streamDirection == kIOAudioStreamDirectionOutput))
+					inout |= AC_AMP_SET_OUTPUT;
+
+				if (inout)
+					(*w)->setAmplifierGainMute(lr | inout, 0, newValue);
+
+				IOLog(" ...0x%x", (*w)->nid);
+			}
+			IOLog(" done\n");
+		}
+
 		if (mixers)
 		{
 			IOLog("change volume on mixers");
@@ -687,7 +794,8 @@ IOReturn HDAIOEngine::volumeChanged(IOAudioControl *volumeControl, SInt32 oldVal
 				if ((*w)->wcaps.out_amp_present)
 					inout |= AC_AMP_SET_OUTPUT;
 
-				(*w)->setAmplifierGainMute(lr | inout, 0, newValue);
+				if (inout)
+					(*w)->setAmplifierGainMute(lr | inout, 0, newValue);
 
 				IOLog(" ...0x%x", (*w)->nid);
 			}
@@ -700,12 +808,21 @@ IOReturn HDAIOEngine::volumeChanged(IOAudioControl *volumeControl, SInt32 oldVal
 			for (w = pins; *w != NULL; w++)
 			{
 				inout = 0;
-				if ((*w)->wcaps.in_amp_present)
-					inout |= AC_AMP_SET_INPUT;
-				if ((*w)->wcaps.out_amp_present)
+//				if ((*w)->wcaps.in_amp_present && (streamDirection == kIOAudioStreamDirectionInput))
+//					inout |= AC_AMP_SET_INPUT;
+				if ((*w)->wcaps.out_amp_present && (streamDirection == kIOAudioStreamDirectionOutput))
 					inout |= AC_AMP_SET_OUTPUT;
 
-				(*w)->setAmplifierGainMute(lr | inout, 0, newValue);
+				if (inout)
+					(*w)->setAmplifierGainMute(lr | inout, 0, newValue);
+
+/*				if ((*w)->wcaps.in_amp_present && (streamDirection == kIOAudioStreamDirectionInput))
+				{
+					if (newValue > AC_GAIN_MAX / 2)
+						(*w)->setPinControl(AC_PINCTL_IN_EN | AC_PINCTL_VREF_80);
+					else
+						(*w)->setPinControl(AC_PINCTL_IN_EN | AC_PINCTL_VREF_50);
+				}*/
 
 				IOLog(" ...0x%x", (*w)->nid);
 			}
@@ -745,12 +862,12 @@ IOReturn HDAIOEngine::muteChanged(IOAudioControl *muteControl, SInt32 oldValue, 
 		IOLog("change mute on pins");
 		for (w = pins; *w != NULL; w++)
 		{
-			if ((*w)->wcaps.in_amp_present)
+			if ((*w)->wcaps.in_amp_present && (streamDirection == kIOAudioStreamDirectionInput))
 			{
 				(*w)->setAmplifierGainMute(AC_AMP_SET_LEFT | AC_AMP_SET_INPUT, 0, muteParam);
 				(*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_INPUT, 0, muteParam);
 			}
-			if ((*w)->wcaps.out_amp_present)
+			if ((*w)->wcaps.out_amp_present && (streamDirection == kIOAudioStreamDirectionOutput))
 			{
 				(*w)->setAmplifierGainMute(AC_AMP_SET_LEFT | AC_AMP_SET_OUTPUT, 0, muteParam);
 				(*w)->setAmplifierGainMute(AC_AMP_SET_RIGHT | AC_AMP_SET_OUTPUT, 0, muteParam);

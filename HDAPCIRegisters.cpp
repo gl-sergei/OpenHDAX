@@ -22,7 +22,7 @@ bool HDAPCIRegisters::init(IOPCIDevice* device) {
 
 	pciDevice = device;
 	deviceMap = NULL;
-	spinlock = NULL;
+	mutex = NULL;
 
 	if (!pciDevice)
 		return false;
@@ -50,14 +50,12 @@ bool HDAPCIRegisters::init(IOPCIDevice* device) {
     // mapped registers
 	pciDevice->setMemoryEnable(true);
 
-	spinlock = IOSimpleLockAlloc();
-	if (!spinlock) {
+	mutex = IOLockAlloc();
+	if (!mutex) {
 		deviceMap->release();
 		deviceMap = NULL;
 		return false;
 	}
-
-	IOSimpleLockInit(spinlock);
 
 	return true;
 }
@@ -84,20 +82,20 @@ void HDAPCIRegisters::free() {
 		deviceMap = NULL;
 	}
 
-	if (spinlock) {
-		IOSimpleLockFree(spinlock);
-		spinlock = NULL;
+	if (mutex) {
+		IOLockFree(mutex);
+		mutex = NULL;
 	}
 
 	super::free();
 }
 
-IOInterruptState HDAPCIRegisters::lock() {
-	return IOSimpleLockLockDisableInterrupt(spinlock);
+void HDAPCIRegisters::lock() {
+	IOLockLock(mutex);
 }
 
-void HDAPCIRegisters::unlock(IOInterruptState state) {
-	IOSimpleLockUnlockEnableInterrupt(spinlock, state);
+void HDAPCIRegisters::unlock() {
+	IOLockUnlock(mutex);
 }
 
 IOPCIDevice *HDAPCIRegisters::getDevice() {

@@ -272,6 +272,7 @@ public:
 	virtual unsigned getCurrentSelection();
 
 	virtual ~HDAAudioWidget();
+	HDAAudioWidget();
 };
 
 #endif

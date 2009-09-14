@@ -159,14 +159,13 @@ IOReturn HDATestingUserClient::sendCommand(
     if( *outputSize < sizeof(int))
         return( kIOReturnNoSpace );
 
-	UInt32 result;
+	unsigned result;
+	
 	HDACommandTransmitter *commandTransmitter = fDriver->getCommandTransmitter();
-	commandTransmitter->lock();
-	if (commandTransmitter->sendCommand(dataIn->caddr, dataIn->nid, dataIn->direct, dataIn->verb, dataIn->parm))
-		result = commandTransmitter->getResponse();
-	else
+//	commandTransmitter->lock();
+	if (!commandTransmitter->sendCommand(dataIn->caddr, dataIn->nid, dataIn->direct, dataIn->verb, dataIn->parm, &result))
 		result = (UInt32)-1;
-	commandTransmitter->unlock();
+//	commandTransmitter->unlock();
 
 	dataOut->result = result;
 

@@ -68,12 +68,21 @@ bool HDACommandTransmitter::init(HDAPCIRegisters *registers) {
 	if (!super::init())
 		return false;
 
-	commandBuffer = NULL; regs = NULL; mutex = NULL;
+	commandBuffer = NULL; regs = NULL;
 //	unsolicitedResponses = NULL;
 	singleMode = false;
 
 	regs = registers;
-	pciDevice = regs->getDevice();
+
+/*	if (regs)
+		pciDevice = regs->getDevice();*/
+
+	workLoop = IOWorkLoop::workLoop();
+	if (workLoop)
+		commandGate = IOCommandGate::commandGate(this);
+
+	if (commandGate)
+		workLoop->addEventSource(commandGate);
 
 	commandBuffer = HDADMABuffer::withSize(4069, true);
 	if (!commandBuffer)
@@ -91,15 +100,21 @@ bool HDACommandTransmitter::init(HDAPCIRegisters *registers) {
 	IOLog("HDACommandTransmitter[%p]::init() corb: phaddr=%08qx, buf=%p\n", this, corb.phaddr.whole64(), corb.vaddr);
 	IOLog("HDACommandTransmitter[%p]::init() rirb: phaddr=%08qx, buf=%p\n", this, rirb.phaddr.whole64(), rirb.vaddr);
 	
-	mutex = IOLockAlloc();
-	if (!mutex)
-		return false;
-
 	return true;
 }
 
 void HDACommandTransmitter::free() {
-
+	
+	if (workLoop) {
+		if (commandGate) {
+			workLoop->removeEventSource(commandGate);
+			commandGate->release();
+			commandGate = NULL;
+		}
+		workLoop->release();
+		workLoop = NULL;
+	}
+	
 	if (commandBuffer) {
 		commandBuffer->release();
 		commandBuffer = NULL;
@@ -109,11 +124,6 @@ void HDACommandTransmitter::free() {
 		unsolicitedResponses->release();
 		unsolicitedResponses = NULL;
 	}*/
-
-	if (mutex) {
-		IOLockFree(mutex);
-		mutex = NULL;
-	}
 
 	super::free();
 }
@@ -179,15 +189,15 @@ bool HDACommandTransmitter::corbSendCommand(UInt32 command) {
 	unsigned int wp;
 	
 	/* add command to corb */
+	regs->lock();
 	wp = regs->read8(HDA_CORBWP);
 	wp++;
 	wp %= MAX_CORB_ENTRIES;
 	
-	IOInterruptState state = regs->lock();
 	rirb.cmds++;
 	OSWriteLittleInt32(corb.vaddr, wp * sizeof(UInt32), command);
 	regs->write32(HDA_CORBWP, wp);
-	regs->unlock(state);
+	regs->unlock();
 	
 	return true;
 }
@@ -198,9 +208,12 @@ void HDACommandTransmitter::updateRirb() {
 	unsigned int rp, wp;
 	UInt32 res, res_ex;
 
+	regs->lock();
 	wp = regs->read8(HDA_RIRBWP);
-	if (wp == rirb.wp)
+	if (wp == rirb.wp) {
+		regs->unlock();
 		return;
+	}
 	rirb.wp = wp;
 	
 	while (rirb.rp != wp) {
@@ -224,6 +237,7 @@ void HDACommandTransmitter::updateRirb() {
 			rirb.cmds--;
 		}
 	}
+	regs->unlock();
 }
 
 UInt32 HDACommandTransmitter::rirbGetResponse() {
@@ -236,9 +250,7 @@ UInt32 HDACommandTransmitter::rirbGetResponse() {
 		int timeout = 100;
 		while (timeout--) {
 			if (pollingMode) {
-				interruptState = regs->lock();
 				updateRirb();
-				regs->unlock(interruptState);
 			}
 			if (!rirb.cmds)
 				return rirb.res;	/* the last value */
@@ -312,7 +324,7 @@ UInt32 HDACommandTransmitter::singleGetResponse() {
 bool HDACommandTransmitter::sendCommand(unsigned int addr, UInt16 nid, int direct, unsigned int verb, unsigned int para) {
 
 	/* send a command */
-	UInt32 val;
+/*	UInt32 val;
 
 	val = (UInt32)(addr & 0x0f) << 28;
 	val |= (UInt32)direct << 27;
@@ -322,7 +334,41 @@ bool HDACommandTransmitter::sendCommand(unsigned int addr, UInt16 nid, int direc
 
 	if (singleMode)
 		return singleSendCommand(val);
-	return corbSendCommand(val);
+	return corbSendCommand(val);*/
+
+	HDACommand command;
+	command.addr = addr;
+	command.nid = nid;
+	command.direct = direct;
+	command.verb = verb;
+	command.para = para;
+	
+	return commandGate->runAction(sendCommandAction, &command, NULL, NULL, NULL) == kIOReturnSuccess;
+	
+}
+
+bool HDACommandTransmitter::sendCommand(unsigned int addr, UInt16 nid, int direct, unsigned int verb, unsigned int para, unsigned *result) {
+
+/*	if (!sendCommand(addr, nid, direct, verb, para))
+		return false;
+	
+	*result = getResponse();
+
+	return true;*/
+
+	HDACommand command;
+	command.addr = addr;
+	command.nid = nid;
+	command.direct = direct;
+	command.verb = verb;
+	command.para = para;
+	
+	if (commandGate->runAction(sendCommandAndGetResponseAction, &command, NULL, NULL, NULL) == kIOReturnSuccess)
+	{
+		*result = command.result;
+		return true;
+	}
+	return false;
 }
 
 UInt32 HDACommandTransmitter::getResponse() {
@@ -334,12 +380,52 @@ UInt32 HDACommandTransmitter::getResponse() {
 }
 
 
-void HDACommandTransmitter::lock() {
+IOReturn HDACommandTransmitter::sendCommandAction(OSObject *owner, void *arg0, void *arg1, void *arg2, void *arg3)
+{
+	HDACommandTransmitter *commandTransmitter = OSDynamicCast(HDACommandTransmitter, owner);
 
-	IOLockLock(mutex);
+	if (!commandTransmitter)
+		return kIOReturnBadArgument;
+	HDACommand *command = (HDACommand*)arg0;
+	
+	return commandTransmitter->performSendCommand(command) ? kIOReturnSuccess : kIOReturnError;
 }
 
-void HDACommandTransmitter::unlock() {
+IOReturn HDACommandTransmitter::sendCommandAndGetResponseAction(OSObject *owner, void *arg0, void *arg1, void *arg2, void *arg3)
+{
+	HDACommandTransmitter *commandTransmitter = OSDynamicCast(HDACommandTransmitter, owner);
+	
+	if (!commandTransmitter)
+		return kIOReturnBadArgument;
+	HDACommand *command = (HDACommand*)arg0;
+	
+	if (!commandTransmitter->performSendCommand(command))
+		return kIOReturnError;
 
-	IOLockUnlock(mutex);
+	command->result = commandTransmitter->performGetResponse();
+	return kIOReturnSuccess;
+}
+
+bool HDACommandTransmitter::performSendCommand(HDACommand *command) {
+	
+	/* send a command */
+	UInt32 val;
+	
+	val = (UInt32)(command->addr & 0x0f) << 28;
+	val |= (UInt32)command->direct << 27;
+	val |= (UInt32)command->nid << 20;
+	val |= command->verb << 8;
+	val |= command->para & 0xffff;
+	
+	if (singleMode)
+		return singleSendCommand(val);
+	return corbSendCommand(val);
+}
+
+UInt32 HDACommandTransmitter::performGetResponse() {
+	
+	/* get a response */
+	if (singleMode)
+		return singleGetResponse();
+	return rirbGetResponse();
 }
