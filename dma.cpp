@@ -124,7 +124,7 @@ bool HDADMABuffer::allocate(unsigned int size, bool allow64bit) {
 		UInt32 numSeg = 1;
 		// use the 64 bit variant to match outSegFunc
 		dmaCommand->gen64IOVMSegments(&offset, &segment, &numSeg);
-		IOLog("addr 0x%qx, len 0x%qx, nsegs %ld\n",
+		IOLog("addr 0x%qx, len 0x%qx, nsegs %u\n",
 				segment.fIOVMAddr, segment.fLength, numSeg);
 		phaddr = PH64(segment.fIOVMAddr);
 	} else {

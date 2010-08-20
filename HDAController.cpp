@@ -487,8 +487,6 @@ void HDAController::free()
 bool HDAController::createAudioEngine()
 {
     bool result = false;
-    IOAudioControl *control;
-    
     IOLog("HDAController[%p]::createAudioEngine()\n", this);
     
 	HDAIOEngine *outputEngine;

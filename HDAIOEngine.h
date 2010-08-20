@@ -70,8 +70,8 @@ public:
     virtual IOReturn convertInputSamples(const void *sampleBuf, void *destBuf, UInt32 firstSampleFrame, UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream);
 	static IOReturn volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);
 	virtual IOReturn volumeChanged(IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);
-	static IOReturn HDAIOEngine::muteChangeHandler(IOService *target, IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
-	virtual IOReturn HDAIOEngine::muteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
+	static IOReturn muteChangeHandler(IOService *target, IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
+	virtual IOReturn muteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
 
 	virtual void handleStreamInterrupt(unsigned streamId);
 

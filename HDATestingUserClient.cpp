@@ -31,7 +31,7 @@ OSDefineMetaClassAndStructors( HDATestingUserClient, IOUserClient );
 bool HDATestingUserClient::initWithTask( task_t owningTask, void * securityID,
                                              UInt32 type )
 {
-    IOLog("HDATestingUserClient::initWithTask(type %ld)\n", type);
+    IOLog("HDATestingUserClient::initWithTask(type %u)\n", type);
     
     fTask = owningTask;
 
@@ -147,9 +147,6 @@ IOReturn HDATestingUserClient::sendCommand(
 					   HDACommandInput * dataIn, HDACommandOutput * dataOut,
                                            IOByteCount inputSize, IOByteCount * outputSize )
 {
-    IOReturn	ret;
-    IOItemCount	count;
-
 	if ( inputSize < sizeof(HDACommandInput) )
 		return kIOReturnNoSpace;
 

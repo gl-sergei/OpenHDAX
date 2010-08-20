@@ -749,7 +749,7 @@ IOReturn HDAIOEngine::volumeChangeHandler(IOService *target, IOAudioControl *vol
 
 IOReturn HDAIOEngine::volumeChanged(IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue)
 {
-    IOLog("HDAIOEngine[%p]::volumeChanged(%p, %ld, %ld)\n", this, volumeControl, oldValue, newValue);
+    IOLog("HDAIOEngine[%p]::volumeChanged(%p, %d, %d)\n", this, volumeControl, oldValue, newValue);
     
 	HDAAudioWidget **w;
 	unsigned lr, inout;
@@ -762,7 +762,7 @@ IOReturn HDAIOEngine::volumeChanged(IOAudioControl *volumeControl, SInt32 oldVal
 	
     if (volumeControl) {
 
-        IOLog("\t-> Channel %ld\n", volumeControl->getChannelID());
+        IOLog("\t-> Channel %d\n", volumeControl->getChannelID());
 
 		if (convertors)
 		{
@@ -848,7 +848,7 @@ IOReturn HDAIOEngine::muteChangeHandler(IOService *target, IOAudioControl *muteC
 
 IOReturn HDAIOEngine::muteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue)
 {
-    IOLog("HDAController[%p]::muteChanged(%p, %ld, %ld)\n", this, muteControl, oldValue, newValue);
+    IOLog("HDAController[%p]::muteChanged(%p, %d, %d)\n", this, muteControl, oldValue, newValue);
     
 	HDAAudioWidget **w;
 	unsigned muteParam;

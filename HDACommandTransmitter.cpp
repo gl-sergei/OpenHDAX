@@ -243,7 +243,6 @@ void HDACommandTransmitter::updateRirb() {
 UInt32 HDACommandTransmitter::rirbGetResponse() {
 
 	/* receive a response */
-	IOInterruptState interruptState;
 	bool pollingMode = false;
 
 	for ( ; ; ) {
