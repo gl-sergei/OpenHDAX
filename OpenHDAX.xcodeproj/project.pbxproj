@@ -3,20 +3,33 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 44;
+	objectVersion = 46;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		32D94FC60562CBF700B6AF17 /* HDAController.h in Headers */ = {isa = PBXBuildFile; fileRef = 1A224C3EFF42367911CA2CB7 /* HDAController.h */; };
 		32D94FC80562CBF700B6AF17 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 089C167DFE841241C02AAC07 /* InfoPlist.strings */; };
 		32D94FCA0562CBF700B6AF17 /* HDAController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1A224C3FFF42367911CA2CB7 /* HDAController.cpp */; settings = {ATTRIBUTES = (); }; };
-		5743DD7D0ED0117500607883 /* HDACodec.h in Headers */ = {isa = PBXBuildFile; fileRef = 5743DD7B0ED0117500607883 /* HDACodec.h */; };
-		5743DD7E0ED0117500607883 /* HDACodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5743DD7C0ED0117500607883 /* HDACodec.cpp */; };
+		570227EF0F138A5800C3C6E8 /* HDATestingUserClient.h in Headers */ = {isa = PBXBuildFile; fileRef = 570227ED0F138A5800C3C6E8 /* HDATestingUserClient.h */; };
+		570227F00F138A5800C3C6E8 /* HDATestingUserClient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 570227EE0F138A5800C3C6E8 /* HDATestingUserClient.cpp */; };
+		57039AD30EEAA6E10063808A /* HDAPCIRegisters.h in Headers */ = {isa = PBXBuildFile; fileRef = 57039AD10EEAA6E10063808A /* HDAPCIRegisters.h */; };
+		57039AD40EEAA6E10063808A /* HDAPCIRegisters.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 57039AD20EEAA6E10063808A /* HDAPCIRegisters.cpp */; };
+		570F89D90F7F4BAF0025BB91 /* HDAAudioStream.h in Headers */ = {isa = PBXBuildFile; fileRef = 570F89D70F7F4BAF0025BB91 /* HDAAudioStream.h */; };
+		570F89DA0F7F4BAF0025BB91 /* HDAAudioStream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 570F89D80F7F4BAF0025BB91 /* HDAAudioStream.cpp */; };
 		5743DDAB0ED0147500607883 /* HDAClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5743DD8F0ED013BC00607883 /* HDAClip.cpp */; };
 		5743DDAC0ED0149E00607883 /* xmmintrin.h in Headers */ = {isa = PBXBuildFile; fileRef = 5743DD2D0ED009C200607883 /* xmmintrin.h */; };
 		5743DDAD0ED014A200607883 /* mmintrin.h in Headers */ = {isa = PBXBuildFile; fileRef = 5743DD5A0ED00A7C00607883 /* mmintrin.h */; };
 		5743DDAE0ED014A600607883 /* emmintrin.h in Headers */ = {isa = PBXBuildFile; fileRef = 5743DD5D0ED00AA300607883 /* emmintrin.h */; };
 		5743DDC40ED019E100607883 /* libOpenHDAXClipLib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5743DD230ED004EE00607883 /* libOpenHDAXClipLib.a */; };
+		574B1E8E0EDC3E8E00FA5B67 /* dma.h in Headers */ = {isa = PBXBuildFile; fileRef = 574B1E8C0EDC3E8E00FA5B67 /* dma.h */; };
+		574B1E8F0EDC3E8E00FA5B67 /* dma.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 574B1E8D0EDC3E8E00FA5B67 /* dma.cpp */; };
+		5759CABE0F1487AB0085B61C /* HDACodecCommon.h in Headers */ = {isa = PBXBuildFile; fileRef = 5759CABD0F1487AB0085B61C /* HDACodecCommon.h */; };
+		575B0F350FF75FD0002CECF4 /* HDAIOEngine.h in Headers */ = {isa = PBXBuildFile; fileRef = 575B0F330FF75FD0002CECF4 /* HDAIOEngine.h */; };
+		575B0F360FF75FD0002CECF4 /* HDAIOEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 575B0F340FF75FD0002CECF4 /* HDAIOEngine.cpp */; };
+		575B0F500FF765D4002CECF4 /* HDAWidget.h in Headers */ = {isa = PBXBuildFile; fileRef = 575B0F4E0FF765D4002CECF4 /* HDAWidget.h */; };
+		575B0F510FF765D4002CECF4 /* HDAWidget.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 575B0F4F0FF765D4002CECF4 /* HDAWidget.cpp */; };
+		576256AD0EF53C0D00025A04 /* HDACommandTransmitter.h in Headers */ = {isa = PBXBuildFile; fileRef = 576256AB0EF53C0D00025A04 /* HDACommandTransmitter.h */; };
+		576256AE0EF53C0D00025A04 /* HDACommandTransmitter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 576256AC0EF53C0D00025A04 /* HDACommandTransmitter.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,13 +48,26 @@
 		1A224C3FFF42367911CA2CB7 /* HDAController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HDAController.cpp; sourceTree = "<group>"; };
 		32D94FCF0562CBF700B6AF17 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		32D94FD00562CBF700B6AF17 /* OpenHDAX.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenHDAX.kext; sourceTree = BUILT_PRODUCTS_DIR; };
+		570227ED0F138A5800C3C6E8 /* HDATestingUserClient.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HDATestingUserClient.h; sourceTree = "<group>"; };
+		570227EE0F138A5800C3C6E8 /* HDATestingUserClient.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HDATestingUserClient.cpp; sourceTree = "<group>"; };
+		57039AD10EEAA6E10063808A /* HDAPCIRegisters.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HDAPCIRegisters.h; sourceTree = "<group>"; };
+		57039AD20EEAA6E10063808A /* HDAPCIRegisters.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HDAPCIRegisters.cpp; sourceTree = "<group>"; };
+		570F89D70F7F4BAF0025BB91 /* HDAAudioStream.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HDAAudioStream.h; sourceTree = "<group>"; };
+		570F89D80F7F4BAF0025BB91 /* HDAAudioStream.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HDAAudioStream.cpp; sourceTree = "<group>"; };
 		5743DD230ED004EE00607883 /* libOpenHDAXClipLib.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libOpenHDAXClipLib.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		5743DD2D0ED009C200607883 /* xmmintrin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = xmmintrin.h; sourceTree = "<group>"; };
 		5743DD5A0ED00A7C00607883 /* mmintrin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = mmintrin.h; sourceTree = "<group>"; };
 		5743DD5D0ED00AA300607883 /* emmintrin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = emmintrin.h; sourceTree = "<group>"; };
-		5743DD7B0ED0117500607883 /* HDACodec.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HDACodec.h; sourceTree = "<group>"; };
-		5743DD7C0ED0117500607883 /* HDACodec.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HDACodec.cpp; sourceTree = "<group>"; };
 		5743DD8F0ED013BC00607883 /* HDAClip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HDAClip.cpp; sourceTree = "<group>"; };
+		574B1E8C0EDC3E8E00FA5B67 /* dma.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = dma.h; sourceTree = "<group>"; };
+		574B1E8D0EDC3E8E00FA5B67 /* dma.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = dma.cpp; sourceTree = "<group>"; };
+		5759CABD0F1487AB0085B61C /* HDACodecCommon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HDACodecCommon.h; sourceTree = "<group>"; };
+		575B0F330FF75FD0002CECF4 /* HDAIOEngine.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HDAIOEngine.h; sourceTree = "<group>"; };
+		575B0F340FF75FD0002CECF4 /* HDAIOEngine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HDAIOEngine.cpp; sourceTree = "<group>"; };
+		575B0F4E0FF765D4002CECF4 /* HDAWidget.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HDAWidget.h; sourceTree = "<group>"; };
+		575B0F4F0FF765D4002CECF4 /* HDAWidget.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HDAWidget.cpp; sourceTree = "<group>"; };
+		576256AB0EF53C0D00025A04 /* HDACommandTransmitter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HDACommandTransmitter.h; sourceTree = "<group>"; };
+		576256AC0EF53C0D00025A04 /* HDACommandTransmitter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HDACommandTransmitter.cpp; sourceTree = "<group>"; };
 		8DA8362C06AD9B9200E5AC22 /* Kernel.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Kernel.framework; path = /System/Library/Frameworks/Kernel.framework; sourceTree = "<absolute>"; };
 /* End PBXFileReference section */
 
@@ -96,14 +122,27 @@
 		247142CAFF3F8F9811CA285C /* Source */ = {
 			isa = PBXGroup;
 			children = (
+				576256AC0EF53C0D00025A04 /* HDACommandTransmitter.cpp */,
+				576256AB0EF53C0D00025A04 /* HDACommandTransmitter.h */,
 				1A224C3EFF42367911CA2CB7 /* HDAController.h */,
 				1A224C3FFF42367911CA2CB7 /* HDAController.cpp */,
 				5743DD2D0ED009C200607883 /* xmmintrin.h */,
 				5743DD5A0ED00A7C00607883 /* mmintrin.h */,
 				5743DD5D0ED00AA300607883 /* emmintrin.h */,
-				5743DD7B0ED0117500607883 /* HDACodec.h */,
-				5743DD7C0ED0117500607883 /* HDACodec.cpp */,
 				5743DD8F0ED013BC00607883 /* HDAClip.cpp */,
+				574B1E8C0EDC3E8E00FA5B67 /* dma.h */,
+				574B1E8D0EDC3E8E00FA5B67 /* dma.cpp */,
+				57039AD10EEAA6E10063808A /* HDAPCIRegisters.h */,
+				57039AD20EEAA6E10063808A /* HDAPCIRegisters.cpp */,
+				570227ED0F138A5800C3C6E8 /* HDATestingUserClient.h */,
+				570227EE0F138A5800C3C6E8 /* HDATestingUserClient.cpp */,
+				5759CABD0F1487AB0085B61C /* HDACodecCommon.h */,
+				570F89D70F7F4BAF0025BB91 /* HDAAudioStream.h */,
+				570F89D80F7F4BAF0025BB91 /* HDAAudioStream.cpp */,
+				575B0F330FF75FD0002CECF4 /* HDAIOEngine.h */,
+				575B0F340FF75FD0002CECF4 /* HDAIOEngine.cpp */,
+				575B0F4E0FF765D4002CECF4 /* HDAWidget.h */,
+				575B0F4F0FF765D4002CECF4 /* HDAWidget.cpp */,
 			);
 			name = Source;
 			sourceTree = "<group>";
@@ -116,7 +155,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				32D94FC60562CBF700B6AF17 /* HDAController.h in Headers */,
-				5743DD7D0ED0117500607883 /* HDACodec.h in Headers */,
+				574B1E8E0EDC3E8E00FA5B67 /* dma.h in Headers */,
+				57039AD30EEAA6E10063808A /* HDAPCIRegisters.h in Headers */,
+				576256AD0EF53C0D00025A04 /* HDACommandTransmitter.h in Headers */,
+				570227EF0F138A5800C3C6E8 /* HDATestingUserClient.h in Headers */,
+				5759CABE0F1487AB0085B61C /* HDACodecCommon.h in Headers */,
+				570F89D90F7F4BAF0025BB91 /* HDAAudioStream.h in Headers */,
+				575B0F350FF75FD0002CECF4 /* HDAIOEngine.h in Headers */,
+				575B0F500FF765D4002CECF4 /* HDAWidget.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -177,7 +223,7 @@
 		089C1669FE841209C02AAC07 /* Project object */ = {
 			isa = PBXProject;
 			buildConfigurationList = 1DEB91DD08733DB10010E9CD /* Build configuration list for PBXProject "OpenHDAX" */;
-			compatibilityVersion = "Xcode 3.0";
+			compatibilityVersion = "Xcode 3.2";
 			hasScannedForEncodings = 1;
 			mainGroup = 089C166AFE841209C02AAC07 /* OpenHDAX */;
 			projectDirPath = "";
@@ -216,7 +262,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				32D94FCA0562CBF700B6AF17 /* HDAController.cpp in Sources */,
-				5743DD7E0ED0117500607883 /* HDACodec.cpp in Sources */,
+				574B1E8F0EDC3E8E00FA5B67 /* dma.cpp in Sources */,
+				57039AD40EEAA6E10063808A /* HDAPCIRegisters.cpp in Sources */,
+				576256AE0EF53C0D00025A04 /* HDACommandTransmitter.cpp in Sources */,
+				570227F00F138A5800C3C6E8 /* HDATestingUserClient.cpp in Sources */,
+				570F89DA0F7F4BAF0025BB91 /* HDAAudioStream.cpp in Sources */,
+				575B0F360FF75FD0002CECF4 /* HDAIOEngine.cpp in Sources */,
+				575B0F510FF765D4002CECF4 /* HDAWidget.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -288,25 +340,39 @@
 		1DEB91DE08733DB10010E9CD /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD_64_BIT)";
+				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				KERNEL_MODULE = YES;
+				LIBRARY_STYLE = STATIC;
+				LINK_WITH_STANDARD_LIBRARIES = NO;
+				MODULE_IOKIT = YES;
 				PREBINDING = NO;
-				SDKROOT = "$(DEVELOPER_SDK_DIR)/MacOSX10.5.sdk";
+				SDKROOT = macosx10.6;
+				SKIP_INSTALL = YES;
+				ZERO_LINK = NO;
 			};
 			name = Debug;
 		};
 		1DEB91DF08733DB10010E9CD /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = "$(NATIVE_ARCH)";
+				ARCHS = "$(ARCHS_STANDARD_64_BIT)";
+				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_ENABLE_SSE3_EXTENSIONS = NO;
 				GCC_ENABLE_SUPPLEMENTAL_SSE3_INSTRUCTIONS = NO;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
-				GCC_WARN_UNUSED_VARIABLE = NO;
+				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = "";
+				KERNEL_MODULE = YES;
+				LIBRARY_STYLE = STATIC;
+				LINK_WITH_STANDARD_LIBRARIES = NO;
+				MODULE_IOKIT = YES;
 				PREBINDING = NO;
-				SDKROOT = "$(DEVELOPER_SDK_DIR)/MacOSX10.5.sdk";
+				SDKROOT = macosx10.6;
 				SKIP_INSTALL = YES;
+				ZERO_LINK = NO;
 			};
 			name = Release;
 		};
@@ -319,9 +385,17 @@
 				GCC_MODEL_TUNING = G5;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				INSTALL_PATH = /usr/local/lib;
+				LINK_WITH_STANDARD_LIBRARIES = NO;
+				OTHER_CFLAGS = (
+					"-findirect-virtual-calls",
+					"-static",
+					"-fno-schedule-insns2",
+					"-mlong-branch",
+				);
 				PREBINDING = NO;
 				PRODUCT_NAME = OpenHDAXClip;
-				ZERO_LINK = YES;
+				STANDARD_C_PLUS_PLUS_LIBRARY_TYPE = dynamic;
+				ZERO_LINK = NO;
 			};
 			name = Debug;
 		};
@@ -346,11 +420,19 @@
 					"$(SYSTEM_LIBRARY_DIR)/Frameworks/Kernel.framework/Headers/bsd",
 				);
 				INSTALL_PATH = /usr/local/lib;
+				LINK_WITH_STANDARD_LIBRARIES = NO;
+				OTHER_CFLAGS = (
+					"-findirect-virtual-calls",
+					"-static",
+					"-fno-schedule-insns2",
+					"-mlong-branch",
+				);
 				PREBINDING = YES;
 				PRIVATE_HEADERS_FOLDER_PATH = /usr/local/include;
 				PRODUCT_NAME = OpenHDAXClipLib;
 				PUBLIC_HEADERS_FOLDER_PATH = /usr/local/include;
 				SKIP_INSTALL = YES;
+				STANDARD_C_PLUS_PLUS_LIBRARY_TYPE = dynamic;
 				ZERO_LINK = NO;
 			};
 			name = Release;
