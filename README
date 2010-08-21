@@ -1,0 +1,6 @@
+Please do not even try to use this driver on your Mac if you don't know what exactly you doing.
+It works fine on my S5000XVN board. It lacks some functionality:
+1. 48kHz, 16bits only
+2. Works with ALC260 only
+3. Some strange noise from MIC input))
+This project was started in early 2008 and almost discontinued in 2009-2010 when VoodoHDA came out.
