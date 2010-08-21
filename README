@@ -1,6 +1,13 @@
 Please do not even try to use this driver on your Mac if you don't know what exactly you doing.
 It works fine on my S5000XVN board. It lacks some functionality:
-1. 48kHz, 16bits only
-2. Works with ALC260 only
-3. Some strange noise from MIC input))
-This project was started in early 2008 and almost discontinued in 2009-2010 when VoodoHDA came out.
+ - 48kHz, 16bits only
+ - works with ALC260 only
+ - some strange noise from MIC input))
+This project started in early 2008. It almost discontinued in 2009-2010 when VoodoHDA came out.
+
+Links:
+ - Realtec codec documentation - http://realtek.info/pdf/alc260.pdf
+ - Opensolaris HDA driver - http://src.opensolaris.org/source/xref/onnv/onnv-gate/usr/src/uts/common/io/audio/drv/audiohd/
+ - FreeBSD HDA driver - http://www.freebsd.org/cgi/cvsweb.cgi/src/sys/dev/sound/pci/hda/
+ - Linux HDA driver (ALSA project) - http://lxr.linux.no/linux/sound/pci/hda/
+ - Open Sound System HDA driver - http://opensound.hg.sourceforge.net/hgweb/opensound/opensound/file/ee7da6873927/kernel/drv/oss_hdaudio
